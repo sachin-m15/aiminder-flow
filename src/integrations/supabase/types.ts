@@ -14,16 +14,242 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      chat_messages: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_ai: boolean | null
+          message: string
+          metadata: Json | null
+          task_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_ai?: boolean | null
+          message: string
+          metadata?: Json | null
+          task_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_ai?: boolean | null
+          message?: string
+          metadata?: Json | null
+          task_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      employee_profiles: {
+        Row: {
+          availability: boolean | null
+          avg_completion_time: unknown | null
+          created_at: string | null
+          current_workload: number | null
+          id: string
+          performance_score: number | null
+          skills: string[]
+          tasks_completed: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          availability?: boolean | null
+          avg_completion_time?: unknown | null
+          created_at?: string | null
+          current_workload?: number | null
+          id?: string
+          performance_score?: number | null
+          skills?: string[]
+          tasks_completed?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          availability?: boolean | null
+          avg_completion_time?: unknown | null
+          created_at?: string | null
+          current_workload?: number | null
+          id?: string
+          performance_score?: number | null
+          skills?: string[]
+          tasks_completed?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          contact: string | null
+          created_at: string | null
+          email: string
+          full_name: string
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          contact?: string | null
+          created_at?: string | null
+          email: string
+          full_name: string
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          contact?: string | null
+          created_at?: string | null
+          email?: string
+          full_name?: string
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      task_updates: {
+        Row: {
+          created_at: string | null
+          id: string
+          progress: number | null
+          task_id: string
+          update_text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          progress?: number | null
+          task_id: string
+          update_text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          progress?: number | null
+          task_id?: string
+          update_text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_updates_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          accepted_at: string | null
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string | null
+          created_by: string
+          deadline: string | null
+          description: string
+          id: string
+          priority: string | null
+          progress: number | null
+          required_skills: string[] | null
+          status: Database["public"]["Enums"]["task_status"] | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by: string
+          deadline?: string | null
+          description: string
+          id?: string
+          priority?: string | null
+          progress?: number | null
+          required_skills?: string[] | null
+          status?: Database["public"]["Enums"]["task_status"] | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string
+          deadline?: string | null
+          description?: string
+          id?: string
+          priority?: string | null
+          progress?: number | null
+          required_skills?: string[] | null
+          status?: Database["public"]["Enums"]["task_status"] | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "staff" | "employee"
+      task_status:
+        | "pending"
+        | "invited"
+        | "accepted"
+        | "ongoing"
+        | "completed"
+        | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +376,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "staff", "employee"],
+      task_status: [
+        "pending",
+        "invited",
+        "accepted",
+        "ongoing",
+        "completed",
+        "rejected",
+      ],
+    },
   },
 } as const
