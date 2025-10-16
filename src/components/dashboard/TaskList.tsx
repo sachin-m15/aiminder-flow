@@ -24,9 +24,10 @@ interface Task {
 interface TaskListProps {
   userId: string;
   isAdmin: boolean;
+  searchQuery?: string;
 }
 
-const TaskList = ({ userId, isAdmin }: TaskListProps) => {
+const TaskList = ({ userId, isAdmin, searchQuery = "" }: TaskListProps) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
@@ -139,9 +140,15 @@ const TaskList = ({ userId, isAdmin }: TaskListProps) => {
     }
   };
 
+  const filteredTasks = tasks.filter((task) =>
+    task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    task.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    task.profiles?.full_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="space-y-4">
-      {tasks.map((task) => (
+      {filteredTasks.map((task) => (
         <Card key={task.id} className="cursor-pointer hover:shadow-lg transition-shadow"
           onClick={() => setSelectedTask(task)}>
           <CardHeader>
