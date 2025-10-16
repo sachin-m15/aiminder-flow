@@ -42,46 +42,65 @@ const DashboardSummary = () => {
   };
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
-          <Users className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.totalEmployees}</div>
-        </CardContent>
-      </Card>
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard Overview</h2>
+        <p className="text-muted-foreground">Welcome to your AI-powered task management system</p>
+      </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
-          <Clock className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.activeTasks}</div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-l-4 border-l-primary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Employees</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.totalEmployees}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active team members</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
-          <CheckCircle className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.completedTasks}</div>
-        </CardContent>
-      </Card>
+        <Card className="border-l-4 border-l-accent">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Tasks</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-accent/10 flex items-center justify-center">
+              <Clock className="h-5 w-5 text-accent" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.activeTasks}</div>
+            <p className="text-xs text-muted-foreground mt-1">In progress now</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
-          <AlertCircle className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{stats.pendingApprovals}</div>
-        </CardContent>
-      </Card>
+        <Card className="border-l-4 border-l-[hsl(var(--success))]">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center">
+              <CheckCircle className="h-5 w-5 text-[hsl(var(--success))]" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.completedTasks}</div>
+            <p className="text-xs text-muted-foreground mt-1">Successfully finished</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-[hsl(var(--warning))]">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
+            <div className="h-10 w-10 rounded-full bg-[hsl(var(--warning))]/10 flex items-center justify-center">
+              <AlertCircle className="h-5 w-5 text-[hsl(var(--warning))]" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">{stats.pendingApprovals}</div>
+            <p className="text-xs text-muted-foreground mt-1">Awaiting response</p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 };

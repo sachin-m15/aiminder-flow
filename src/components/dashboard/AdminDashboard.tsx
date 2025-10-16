@@ -28,24 +28,32 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside className="w-64 border-r bg-card flex flex-col">
-        <div className="p-6 border-b">
-          <h1 className="text-xl font-bold">ChatFlow Agent</h1>
-          <p className="text-sm text-muted-foreground">Admin Dashboard</p>
+      <aside className="w-64 border-r bg-sidebar-background text-sidebar-foreground flex flex-col">
+        <div className="p-6 border-b border-sidebar-border">
+          <h1 className="text-xl font-bold text-sidebar-foreground">ChatFlow Agent</h1>
+          <p className="text-sm text-sidebar-foreground/70">Admin Dashboard</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
           <Button
+            variant={activeView === "dashboard" ? "default" : "ghost"}
+            className={`w-full justify-start ${activeView === "dashboard" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            onClick={() => setActiveView("dashboard")}
+          >
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Dashboard
+          </Button>
+          <Button
             variant={activeView === "chat" ? "default" : "ghost"}
-            className="w-full justify-start"
+            className={`w-full justify-start ${activeView === "chat" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
             onClick={() => setActiveView("chat")}
           >
             <MessageSquare className="mr-2 h-4 w-4" />
-            ChatFlow Agent
+            AI Task Assignment
           </Button>
           <Button
             variant={activeView === "employees" ? "default" : "ghost"}
-            className="w-full justify-start"
+            className={`w-full justify-start ${activeView === "employees" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
             onClick={() => setActiveView("employees")}
           >
             <Users className="mr-2 h-4 w-4" />
@@ -53,23 +61,15 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
           <Button
             variant={activeView === "tasks" ? "default" : "ghost"}
-            className="w-full justify-start"
+            className={`w-full justify-start ${activeView === "tasks" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
             onClick={() => setActiveView("tasks")}
           >
             <ListTodo className="mr-2 h-4 w-4" />
             Projects / Tasks
           </Button>
           <Button
-            variant={activeView === "reports" ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => setActiveView("reports")}
-          >
-            <BarChart3 className="mr-2 h-4 w-4" />
-            Reports
-          </Button>
-          <Button
             variant={activeView === "settings" ? "default" : "ghost"}
-            className="w-full justify-start"
+            className={`w-full justify-start ${activeView === "settings" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
             onClick={() => setActiveView("settings")}
           >
             <Settings className="mr-2 h-4 w-4" />
@@ -77,8 +77,8 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
         </nav>
 
-        <div className="p-4 border-t">
-          <Button variant="ghost" className="w-full justify-start" onClick={handleLogout}>
+        <div className="p-4 border-t border-sidebar-border">
+          <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" />
             Logout
           </Button>
@@ -106,29 +106,25 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
         )}
 
         <div className={`${activeView === "chat" ? "flex-1" : "p-6"} space-y-6`}>
-          {activeView !== "chat" && <DashboardSummary />}
-
-          {/* Main Content Area */}
+          {activeView === "dashboard" && <DashboardSummary />}
           {activeView === "chat" && <ChatPanel userId={user.id} onTaskCreated={() => setActiveView("tasks")} />}
           {activeView === "employees" && <EmployeeList searchQuery={searchQuery} />}
           {activeView === "tasks" && <TaskList userId={user.id} isAdmin={true} searchQuery={searchQuery} />}
-          {activeView === "reports" && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Reports & Analytics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Performance reports and analytics coming soon...</p>
-              </CardContent>
-            </Card>
-          )}
           {activeView === "settings" && (
             <Card>
               <CardHeader>
-                <CardTitle>Settings</CardTitle>
+                <CardTitle>Admin Settings</CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Dashboard settings coming soon...</p>
+              <CardContent className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Account Information</h3>
+                  <p className="text-sm text-muted-foreground">Email: {user.email}</p>
+                  <p className="text-sm text-muted-foreground">Role: Administrator</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium mb-2">System Preferences</h3>
+                  <p className="text-sm text-muted-foreground">Notification settings and preferences will be available soon.</p>
+                </div>
               </CardContent>
             </Card>
           )}

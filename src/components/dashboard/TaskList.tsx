@@ -123,20 +123,20 @@ const TaskList = ({ userId, isAdmin, searchQuery = "" }: TaskListProps) => {
     }
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500";
+        return <Badge className="bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))]">{status}</Badge>;
       case "ongoing":
       case "accepted":
-        return "bg-blue-500";
+        return <Badge className="bg-primary text-primary-foreground">{status}</Badge>;
       case "invited":
       case "pending":
-        return "bg-yellow-500";
+        return <Badge className="bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]">{status}</Badge>;
       case "rejected":
-        return "bg-red-500";
+        return <Badge variant="destructive">{status}</Badge>;
       default:
-        return "bg-gray-500";
+        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
@@ -159,9 +159,7 @@ const TaskList = ({ userId, isAdmin, searchQuery = "" }: TaskListProps) => {
                   {task.description}
                 </p>
               </div>
-              <Badge className={getStatusColor(task.status)}>
-                {task.status}
-              </Badge>
+              {getStatusBadge(task.status)}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
