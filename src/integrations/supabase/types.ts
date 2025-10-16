@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       chat_messages: {
         Row: {
+          conversation_id: string | null
           created_at: string | null
           id: string
           is_ai: boolean | null
@@ -25,6 +26,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          conversation_id?: string | null
           created_at?: string | null
           id?: string
           is_ai?: boolean | null
@@ -34,6 +36,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          conversation_id?: string | null
           created_at?: string | null
           id?: string
           is_ai?: boolean | null
@@ -58,8 +61,11 @@ export type Database = {
           avg_completion_time: unknown | null
           created_at: string | null
           current_workload: number | null
+          hourly_rate: number | null
           id: string
+          on_time_rate: number | null
           performance_score: number | null
+          quality_score: number | null
           skills: string[]
           tasks_completed: number | null
           updated_at: string | null
@@ -70,8 +76,11 @@ export type Database = {
           avg_completion_time?: unknown | null
           created_at?: string | null
           current_workload?: number | null
+          hourly_rate?: number | null
           id?: string
+          on_time_rate?: number | null
           performance_score?: number | null
+          quality_score?: number | null
           skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
@@ -82,14 +91,99 @@ export type Database = {
           avg_completion_time?: unknown | null
           created_at?: string | null
           current_workload?: number | null
+          hourly_rate?: number | null
           id?: string
+          on_time_rate?: number | null
           performance_score?: number | null
+          quality_score?: number | null
           skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      invitations: {
+        Row: {
+          created_at: string | null
+          from_user_id: string
+          id: string
+          rejection_reason: string | null
+          responded_at: string | null
+          status: string
+          task_id: string
+          to_user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          from_user_id: string
+          id?: string
+          rejection_reason?: string | null
+          responded_at?: string | null
+          status?: string
+          task_id: string
+          to_user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          from_user_id?: string
+          id?: string
+          rejection_reason?: string | null
+          responded_at?: string | null
+          status?: string
+          task_id?: string
+          to_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_ai_suggested: number | null
+          amount_manual: number | null
+          created_at: string | null
+          id: string
+          paid_at: string | null
+          status: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          amount_ai_suggested?: number | null
+          amount_manual?: number | null
+          created_at?: string | null
+          id?: string
+          paid_at?: string | null
+          status?: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          amount_ai_suggested?: number | null
+          amount_manual?: number | null
+          created_at?: string | null
+          id?: string
+          paid_at?: string | null
+          status?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -124,6 +218,7 @@ export type Database = {
       task_updates: {
         Row: {
           created_at: string | null
+          hours_logged: number | null
           id: string
           progress: number | null
           task_id: string
@@ -132,6 +227,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          hours_logged?: number | null
           id?: string
           progress?: number | null
           task_id: string
@@ -140,6 +236,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          hours_logged?: number | null
           id?: string
           progress?: number | null
           task_id?: string
@@ -161,10 +258,12 @@ export type Database = {
           accepted_at: string | null
           assigned_to: string | null
           completed_at: string | null
+          complexity_multiplier: number | null
           created_at: string | null
           created_by: string
           deadline: string | null
           description: string
+          estimated_hours: number | null
           id: string
           priority: string | null
           progress: number | null
@@ -177,10 +276,12 @@ export type Database = {
           accepted_at?: string | null
           assigned_to?: string | null
           completed_at?: string | null
+          complexity_multiplier?: number | null
           created_at?: string | null
           created_by: string
           deadline?: string | null
           description: string
+          estimated_hours?: number | null
           id?: string
           priority?: string | null
           progress?: number | null
@@ -193,10 +294,12 @@ export type Database = {
           accepted_at?: string | null
           assigned_to?: string | null
           completed_at?: string | null
+          complexity_multiplier?: number | null
           created_at?: string | null
           created_by?: string
           deadline?: string | null
           description?: string
+          estimated_hours?: number | null
           id?: string
           priority?: string | null
           progress?: number | null
