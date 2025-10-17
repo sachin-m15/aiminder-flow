@@ -6,27 +6,43 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Helper to calculate skill match score
+// Helper to calculate skill match score (aligned with frontend)
 const calculateMatchScore = (
   employee: any,
-  requiredSkills: string[],
-  allEmployees: any[]
+  requiredSkills: string[]
 ) => {
-  const employeeSkills = employee.skills || [];
-  const skillMatch = requiredSkills.filter(skill => 
+  const employeeSkills = (employee.skills || []).map((s: string) => s.toLowerCase());
+  
+  // Skill Match (0-100)
+  const matchedSkills = requiredSkills.filter(skill => 
     employeeSkills.some((empSkill: string) => 
-      empSkill.toLowerCase().includes(skill.toLowerCase()) ||
-      skill.toLowerCase().includes(empSkill.toLowerCase())
+      empSkill.includes(skill.toLowerCase()) ||
+      skill.toLowerCase().includes(empSkill)
     )
-  ).length;
-  
-  const maxWorkload = Math.max(...allEmployees.map(e => e.current_workload || 0), 1);
-  const workloadScore = 1 - ((employee.current_workload || 0) / maxWorkload);
-  const performanceScore = (employee.performance_score || 0) / 100;
-  
-  return (skillMatch / Math.max(requiredSkills.length, 1)) * 0.5 + 
-         workloadScore * 0.3 + 
-         performanceScore * 0.2;
+  );
+  const skillMatch = requiredSkills.length > 0 
+    ? (matchedSkills.length / requiredSkills.length) * 100 
+    : 50;
+
+  // Workload Capacity (0-100) - Lower workload = Higher score
+  const maxWorkload = 10;
+  const workloadCapacity = Math.max(0, ((maxWorkload - (employee.current_workload || 0)) / maxWorkload) * 100);
+
+  // Performance Score (0-100)
+  const performanceScore = employee.performance_score || 0;
+
+  // Availability Score (0-100) - Based on current workload
+  const availabilityScore = (employee.current_workload || 0) < 3 ? 100 : 
+                           (employee.current_workload || 0) < 5 ? 70 : 40;
+
+  // Weighted Score (aligned with TaskAssignmentDialog)
+  const matchScore = 
+    (skillMatch * 0.40) + 
+    (workloadCapacity * 0.30) + 
+    (performanceScore * 0.20) + 
+    (availabilityScore * 0.10);
+
+  return Math.round(matchScore);
 };
 
 serve(async (req) => {
@@ -61,6 +77,7 @@ serve(async (req) => {
           required_skills: actionData.skills || [],
           deadline: actionData.deadline,
           estimated_hours: actionData.estimatedHours,
+          started_at: new Date().toISOString(),
         })
         .select()
         .single();
@@ -82,6 +99,211 @@ serve(async (req) => {
         });
 
         return new Response(JSON.stringify({ response: responseText, taskCreated: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // Update task progress action
+    if (action === "update_task_progress" && actionData) {
+      const { taskId, progress, hoursLogged, updateText } = actionData;
+      
+      // Update task
+      const { error: taskError } = await supabase
+        .from("tasks")
+        .update({ 
+          progress, 
+          status: progress === 100 ? "completed" : "ongoing" 
+        })
+        .eq("id", taskId);
+
+      if (taskError) throw taskError;
+
+      // Add task update
+      if (updateText || hoursLogged) {
+        const { error: updateError } = await supabase.from("task_updates").insert({
+          task_id: taskId,
+          user_id: userId,
+          update_text: updateText || `Progress updated to ${progress}%`,
+          progress,
+          hours_logged: hoursLogged || null,
+        });
+
+        if (updateError) throw updateError;
+      }
+
+      const responseText = `✅ Task progress updated to ${progress}%${hoursLogged ? ` with ${hoursLogged} hours logged` : ""}`;
+      await supabase.from("chat_messages").insert({
+        user_id: userId,
+        message: responseText,
+        is_ai: true,
+        task_id: taskId,
+      });
+
+      return new Response(JSON.stringify({ 
+        response: responseText, 
+        taskUpdated: true 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Accept task action
+    if (action === "accept_task" && actionData) {
+      const { taskId } = actionData;
+      
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: "accepted" })
+        .eq("id", taskId)
+        .eq("assigned_to", userId);
+
+      if (error) throw error;
+
+      const responseText = `✅ You've accepted the task! You can now start working on it.`;
+      await supabase.from("chat_messages").insert({
+        user_id: userId,
+        message: responseText,
+        is_ai: true,
+        task_id: taskId,
+      });
+
+      return new Response(JSON.stringify({ 
+        response: responseText, 
+        taskAccepted: true 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Reject task action
+    if (action === "reject_task" && actionData) {
+      const { taskId, reason } = actionData;
+      
+      const { error } = await supabase
+        .from("tasks")
+        .update({ status: "rejected" })
+        .eq("id", taskId)
+        .eq("assigned_to", userId);
+
+      if (error) throw error;
+
+      const responseText = `Task rejected${reason ? `: ${reason}` : "."}`;
+      await supabase.from("chat_messages").insert({
+        user_id: userId,
+        message: responseText,
+        is_ai: true,
+        task_id: taskId,
+      });
+
+      return new Response(JSON.stringify({ 
+        response: responseText, 
+        taskRejected: true 
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Get task status action
+    if (action === "get_task_status" && actionData) {
+      const { taskId } = actionData;
+      
+      const { data: task } = await supabase
+        .from("tasks")
+        .select(`
+          *,
+          assigned_profile:assigned_to(full_name),
+          creator_profile:created_by(full_name),
+          task_updates(
+            id,
+            update_text,
+            progress,
+            hours_logged,
+            created_at,
+            profiles:user_id(full_name)
+          )
+        `)
+        .eq("id", taskId)
+        .single();
+
+      if (task) {
+        const updates = task.task_updates || [];
+        const totalHours = updates.reduce((sum: number, u: { hours_logged: number | null }) => 
+          sum + (u.hours_logged || 0), 0);
+
+        const assignedName = Array.isArray(task.assigned_profile) 
+          ? task.assigned_profile[0]?.full_name 
+          : task.assigned_profile?.full_name;
+
+        const responseText = `📊 **Task Status:**
+
+**${task.title}**
+
+- Status: ${task.status}
+- Progress: ${task.progress}%
+- Priority: ${task.priority}
+- Assigned to: ${assignedName || "Unassigned"}
+- Deadline: ${task.deadline ? new Date(task.deadline).toLocaleDateString() : "No deadline"}
+- Total Hours Logged: ${totalHours}h
+- Updates: ${updates.length}
+
+${updates.length > 0 ? `\n**Recent Updates:**\n${updates.slice(0, 3).map((u: { created_at: string; update_text: string; progress: number }) => 
+  `- ${new Date(u.created_at).toLocaleDateString()}: ${u.update_text} (${u.progress}%)`
+).join('\n')}` : ''}`;
+
+        return new Response(JSON.stringify({ 
+          response: responseText, 
+          taskData: task 
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        return new Response(JSON.stringify({ 
+          response: "Task not found.",
+          error: true
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // List my tasks action
+    if (action === "list_my_tasks") {
+      const { data: tasks } = await supabase
+        .from("tasks")
+        .select(`
+          id,
+          title,
+          status,
+          priority,
+          progress,
+          deadline
+        `)
+        .eq("assigned_to", userId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (tasks && tasks.length > 0) {
+        const taskList = tasks.map((t: { title: string; status: string; progress: number; priority: string; deadline: string | null }, idx: number) => 
+          `${idx + 1}. **${t.title}**
+   - Status: ${t.status} | Progress: ${t.progress}% | Priority: ${t.priority}
+   ${t.deadline ? `- Deadline: ${new Date(t.deadline).toLocaleDateString()}` : ""}`
+        ).join('\n\n');
+
+        const responseText = `📋 **Your Tasks (${tasks.length}):**
+
+${taskList}`;
+
+        return new Response(JSON.stringify({ 
+          response: responseText,
+          tasks
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } else {
+        return new Response(JSON.stringify({ 
+          response: "You don't have any assigned tasks yet.",
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -191,13 +413,15 @@ Be conversational, helpful, and professional.`,
           .select(`
             user_id,
             skills,
+            department,
+            designation,
             availability,
             current_workload,
             performance_score,
             hourly_rate,
             on_time_rate,
             quality_score,
-            profiles!inner(full_name, email)
+            profiles!employee_profiles_user_id_fkey(full_name, email)
           `)
           .eq("availability", true);
 
@@ -206,7 +430,7 @@ Be conversational, helpful, and professional.`,
           const scoredEmployees = employees
             .map((emp) => ({
               ...emp,
-              matchScore: calculateMatchScore(emp, taskData.skills, employees),
+              matchScore: calculateMatchScore(emp, taskData.skills),
             }))
             .sort((a, b) => b.matchScore - a.matchScore)
             .slice(0, 3);
@@ -226,10 +450,11 @@ Be conversational, helpful, and professional.`,
             const profile = Array.isArray(emp.profiles) ? emp.profiles[0] : emp.profiles;
               
             return `${idx + 1}. **${profile?.full_name || "Unknown"}**
-   - Matched Skills: ${skillMatches.join(", ")}
+   - ${emp.designation || "Employee"} • ${emp.department || "General"}
+   - Matched Skills: ${skillMatches.join(", ") || "None"}
    - Workload: ${emp.current_workload || 0} active tasks
-   - Performance: ${Math.round(emp.quality_score || 0)}% quality
-   - Match Score: ${Math.round(emp.matchScore * 100)}%
+   - Performance: ${Math.round(emp.performance_score || 0)}%
+   - Match Score: ${emp.matchScore}%
    ${estimatedCost !== "N/A" ? `- Estimated Cost: $${estimatedCost}` : ""}`;
           });
 
@@ -319,10 +544,11 @@ Would you like to send an invitation to the top match?`;
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error in ai-chat function:", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: errorMessage }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
