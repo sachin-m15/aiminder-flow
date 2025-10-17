@@ -121,7 +121,7 @@ serve(async (req) => {
     const body = await req.json();
     console.log("Request body:", JSON.stringify(body, null, 2));
     
-    const { message, taskId, userId, action, actionData, conversationId } = body;
+    let { message, taskId, userId, action, actionData, conversationId } = body;
     
     // Get API keys - try Lovable first, fallback to OpenAI
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -140,6 +140,27 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+
+    // If no conversation_id provided, get user's default conversation from database
+    if (!conversationId && userId) {
+      console.log("No conversation_id provided, fetching from database...");
+      const { data: existingMsg } = await supabase
+        .from("chat_messages")
+        .select("conversation_id")
+        .eq("user_id", userId)
+        .limit(1)
+        .single();
+      
+      if (existingMsg?.conversation_id) {
+        conversationId = existingMsg.conversation_id;
+        console.log("Using existing conversation_id:", conversationId);
+      } else {
+        // Use deterministic conversation ID based on user_id
+        // This matches get_user_default_conversation_id function
+        conversationId = userId; // Simple fallback
+        console.log("No existing conversation, using userId as conversation_id:", conversationId);
+      }
+    }
 
     // Handle specific actions (approve invitation, create task, etc.)
     if (action === "create_task" && actionData) {

@@ -83,21 +83,40 @@ const ChatPanel = ({ userId, onTaskCreated }: ChatPanelProps) => {
   }, [userId]);
 
   useEffect(() => {
-    // Get or create a conversation ID for this user
+    // Get or create conversation ID from database (server-side, deterministic per user)
     const initConversation = async () => {
-      // Try to get existing conversation from localStorage
-      let convId = localStorage.getItem(`chat_conversation_${userId}`);
+      try {
+        // First, try to get existing conversation for this user from the database
+        const { data: existingMessages } = await supabase
+          .from("chat_messages")
+          .select("conversation_id")
+          .eq("user_id", userId)
+          .limit(1)
+          .single();
 
-      if (!convId) {
-        // Create new conversation ID
-        convId = crypto.randomUUID();
-        localStorage.setItem(`chat_conversation_${userId}`, convId);
+        if (existingMessages?.conversation_id) {
+          // Use existing conversation
+          setConversationId(existingMessages.conversation_id);
+        } else {
+          // No messages yet - use deterministic conversation ID based on user_id
+          // This matches the server-side get_user_default_conversation_id function
+          // Using a namespace UUID (DNS namespace) + user_id creates consistent UUIDs
+          const namespaceUUID = '6ba7b810-9dad-11d1-80b4-00c04fd430c8';
+
+          // For simplicity, we'll create a deterministic ID by using user_id directly
+          // The edge function will handle creating the proper conversation_id
+          setConversationId(userId);
+        }
+      } catch (error) {
+        console.error('Error initializing conversation:', error);
+        // Fallback to userId as conversation ID
+        setConversationId(userId);
       }
-
-      setConversationId(convId);
     };
 
-    initConversation();
+    if (userId) {
+      initConversation();
+    }
   }, [userId]);
 
   useEffect(() => {
