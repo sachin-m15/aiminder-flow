@@ -28,16 +28,16 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside className="w-64 border-r bg-sidebar-background text-sidebar-foreground flex flex-col">
-        <div className="p-6 border-b border-sidebar-border">
-          <h1 className="text-xl font-bold text-sidebar-foreground">ChatFlow Agent</h1>
-          <p className="text-sm text-sidebar-foreground/70">Admin Dashboard</p>
+      <aside className="w-64 border-r bg-muted/30 dark:bg-slate-900 flex flex-col">
+        <div className="p-6 border-b">
+          <h1 className="text-xl font-bold">ChatFlow Agent</h1>
+          <p className="text-sm text-muted-foreground">Admin Dashboard</p>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">
           <Button
             variant={activeView === "dashboard" ? "default" : "ghost"}
-            className={`w-full justify-start ${activeView === "dashboard" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            className="w-full justify-start"
             onClick={() => setActiveView("dashboard")}
           >
             <BarChart3 className="mr-2 h-4 w-4" />
@@ -45,7 +45,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
           <Button
             variant={activeView === "chat" ? "default" : "ghost"}
-            className={`w-full justify-start ${activeView === "chat" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            className="w-full justify-start"
             onClick={() => setActiveView("chat")}
           >
             <MessageSquare className="mr-2 h-4 w-4" />
@@ -53,7 +53,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
           <Button
             variant={activeView === "employees" ? "default" : "ghost"}
-            className={`w-full justify-start ${activeView === "employees" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            className="w-full justify-start"
             onClick={() => setActiveView("employees")}
           >
             <Users className="mr-2 h-4 w-4" />
@@ -61,7 +61,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
           <Button
             variant={activeView === "tasks" ? "default" : "ghost"}
-            className={`w-full justify-start ${activeView === "tasks" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            className="w-full justify-start"
             onClick={() => setActiveView("tasks")}
           >
             <ListTodo className="mr-2 h-4 w-4" />
@@ -69,7 +69,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
           <Button
             variant={activeView === "settings" ? "default" : "ghost"}
-            className={`w-full justify-start ${activeView === "settings" ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"}`}
+            className="w-full justify-start"
             onClick={() => setActiveView("settings")}
           >
             <Settings className="mr-2 h-4 w-4" />
@@ -77,8 +77,12 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           </Button>
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border">
-          <Button variant="ghost" className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" onClick={handleLogout}>
+        <div className="p-4 border-t">
+          <Button
+            variant="ghost"
+            className="w-full justify-start"
+            onClick={handleLogout}
+          >
             <LogOut className="mr-2 h-4 w-4" />
             Logout
           </Button>

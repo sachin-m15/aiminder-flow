@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -61,6 +81,8 @@ export type Database = {
           avg_completion_time: unknown | null
           created_at: string | null
           current_workload: number | null
+          department: string | null
+          designation: string | null
           hourly_rate: number | null
           id: string
           on_time_rate: number | null
@@ -76,6 +98,8 @@ export type Database = {
           avg_completion_time?: unknown | null
           created_at?: string | null
           current_workload?: number | null
+          department?: string | null
+          designation?: string | null
           hourly_rate?: number | null
           id?: string
           on_time_rate?: number | null
@@ -91,6 +115,8 @@ export type Database = {
           avg_completion_time?: unknown | null
           created_at?: string | null
           current_workload?: number | null
+          department?: string | null
+          designation?: string | null
           hourly_rate?: number | null
           id?: string
           on_time_rate?: number | null
@@ -268,6 +294,7 @@ export type Database = {
           priority: string | null
           progress: number | null
           required_skills: string[] | null
+          started_at: string | null
           status: Database["public"]["Enums"]["task_status"] | null
           title: string
           updated_at: string | null
@@ -286,6 +313,7 @@ export type Database = {
           priority?: string | null
           progress?: number | null
           required_skills?: string[] | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title: string
           updated_at?: string | null
@@ -304,6 +332,7 @@ export type Database = {
           priority?: string | null
           progress?: number | null
           required_skills?: string[] | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title?: string
           updated_at?: string | null
@@ -336,12 +365,33 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_sample_data: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      make_user_admin: {
+        Args: { user_email: string }
+        Returns: string
+      }
+      make_user_employee: {
+        Args: {
+          user_department?: string
+          user_designation?: string
+          user_email: string
+          user_skills?: string[]
+        }
+        Returns: string
+      }
+      seed_sample_data: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
     }
     Enums: {
@@ -478,6 +528,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "staff", "employee"],
@@ -492,3 +545,4 @@ export const Constants = {
     },
   },
 } as const
+

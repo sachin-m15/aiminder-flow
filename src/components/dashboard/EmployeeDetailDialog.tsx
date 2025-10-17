@@ -57,10 +57,36 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
                 <CardTitle>{employee.profiles.full_name}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Email</p>
-                  <p className="font-medium">{employee.profiles.email}</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Email</p>
+                    <p className="font-medium">{employee.profiles.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Status</p>
+                    <Badge variant={employee.availability ? "default" : "secondary"}>
+                      {employee.availability ? "Available" : "Unavailable"}
+                    </Badge>
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Department</p>
+                    <p className="font-medium">{employee.department || "Not assigned"}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Designation</p>
+                    <p className="font-medium">{employee.designation || "Not assigned"}</p>
+                  </div>
+                </div>
+
+                {employee.hourly_rate && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Hourly Rate</p>
+                    <p className="text-xl font-bold">${employee.hourly_rate}/hr</p>
+                  </div>
+                )}
 
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Skills</p>
@@ -95,10 +121,6 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
                     {(employee.performance_score * 100).toFixed(0)}%
                   </p>
                 </div>
-
-                <Badge variant={employee.availability ? "default" : "secondary"}>
-                  {employee.availability ? "Available" : "Unavailable"}
-                </Badge>
               </CardContent>
             </Card>
 
@@ -118,8 +140,8 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
                             task.status === "completed"
                               ? "default"
                               : task.status === "ongoing"
-                              ? "secondary"
-                              : "outline"
+                                ? "secondary"
+                                : "outline"
                           }
                         >
                           {task.status}

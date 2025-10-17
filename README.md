@@ -1,4 +1,65 @@
-# Welcome to your Lovable project
+# AIMinder Flow - AI-Driven Employee Management System
+
+An intelligent task management and employee tracking platform powered by AI. Manage your entire organization through natural conversation with an AI assistant.
+
+## 🌟 Key Features
+
+### For Administrators
+- 📊 **Comprehensive Dashboard** - Real-time analytics, performance metrics, and team insights
+- 🤖 **AI Task Assignment** - Assign projects by simply describing them in chat
+- 👥 **Employee Management** - Track skills, performance, workload, and availability
+- 📈 **Performance Analytics** - Department productivity, top performers, workload balance
+- 💰 **Payment Management** - Compare actual vs AI-estimated compensation
+
+### For Employees
+- 📬 **Task Inbox** - Receive, accept, or reject task invitations
+- ✅ **Task Management** - Update progress, log hours, submit work
+- 💬 **Direct Communication** - Chat with admins for clarifications
+- 📊 **Performance Tracking** - View your metrics and completed tasks
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Node.js 18+ or Bun
+- Supabase Account
+
+### Installation
+
+```bash
+# Clone the repository
+git clone <YOUR_GIT_URL>
+cd aiminder-flow
+
+# Install dependencies
+bun install
+
+# Set up environment variables
+# Create .env.local with your Supabase credentials
+
+# Run database migrations
+supabase db push
+
+# Start development server
+bun run dev
+```
+
+## 🔑 Default Credentials
+
+**Admin Account:**
+- Email: `admin@gmail.com`
+- Password: `123456`
+
+## 📖 Documentation
+
+See `IMPLEMENTATION_GUIDE.md` for detailed technical documentation, implementation status, and development guide.
+
+## 🛠️ Tech Stack
+
+- React + TypeScript + Vite
+- Tailwind CSS + Shadcn UI
+- Supabase (PostgreSQL + Edge Functions)
+- OpenAI GPT
+- React Query (TanStack Query)
 
 ## Project info
 
