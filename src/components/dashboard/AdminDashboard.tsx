@@ -10,6 +10,7 @@ import EmployeeList from "./EmployeeList";
 import TaskList from "./TaskList";
 import DashboardSummary from "./DashboardSummary";
 import ChatPanel from "./ChatPanel";
+import { useRealtimeNotifications } from "@/hooks/use-realtime-notifications";
 
 interface AdminDashboardProps {
   user: User;
@@ -19,6 +20,20 @@ interface AdminDashboardProps {
 const AdminDashboard = ({ user }: AdminDashboardProps) => {
   const [activeView, setActiveView] = useState("chat");
   const [searchQuery, setSearchQuery] = useState("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Enable real-time notifications
+  useRealtimeNotifications({
+    userId: user.id,
+    userRole: "admin",
+    onTaskUpdate: () => {
+      // Trigger refresh of task list
+      setRefreshTrigger(prev => prev + 1);
+    },
+    onNewMessage: () => {
+      // Could add badge counter here
+    },
+  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -113,7 +128,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           {activeView === "dashboard" && <DashboardSummary />}
           {activeView === "chat" && <ChatPanel userId={user.id} onTaskCreated={() => setActiveView("tasks")} />}
           {activeView === "employees" && <EmployeeList searchQuery={searchQuery} />}
-          {activeView === "tasks" && <TaskList userId={user.id} isAdmin={true} searchQuery={searchQuery} />}
+          {activeView === "tasks" && <TaskList key={refreshTrigger} userId={user.id} isAdmin={true} searchQuery={searchQuery} />}
           {activeView === "settings" && (
             <Card>
               <CardHeader>

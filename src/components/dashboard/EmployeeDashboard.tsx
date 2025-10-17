@@ -1,12 +1,14 @@
 import { User } from "@supabase/supabase-js";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { LogOut, ListTodo, MessageSquare, Inbox } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TaskList from "./TaskList";
 import ChatInterface from "./ChatInterface";
 import EmployeeInbox from "./EmployeeInbox";
+import { useRealtimeNotifications } from "@/hooks/use-realtime-notifications";
 
 interface EmployeeDashboardProps {
   user: User;
@@ -14,6 +16,22 @@ interface EmployeeDashboardProps {
 
 const EmployeeDashboard = ({ user }: EmployeeDashboardProps) => {
   const [activeView, setActiveView] = useState("inbox");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Enable real-time notifications
+  useRealtimeNotifications({
+    userId: user.id,
+    userRole: "employee",
+    onTaskUpdate: () => {
+      // Trigger refresh of task list and inbox
+      setRefreshTrigger(prev => prev + 1);
+      setUnreadCount(prev => prev + 1);
+    },
+    onNewMessage: () => {
+      // Could add message badge counter here
+    },
+  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -32,11 +50,19 @@ const EmployeeDashboard = ({ user }: EmployeeDashboardProps) => {
         <nav className="flex-1 p-4 space-y-2">
           <Button
             variant={activeView === "inbox" ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => setActiveView("inbox")}
+            className="w-full justify-start relative"
+            onClick={() => {
+              setActiveView("inbox");
+              setUnreadCount(0); // Clear unread count when opening inbox
+            }}
           >
             <Inbox className="mr-2 h-4 w-4" />
             Task Invitations
+            {unreadCount > 0 && (
+              <Badge variant="destructive" className="ml-auto h-5 w-5 p-0 flex items-center justify-center">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Badge>
+            )}
           </Button>
           <Button
             variant={activeView === "tasks" ? "default" : "ghost"}
@@ -67,8 +93,8 @@ const EmployeeDashboard = ({ user }: EmployeeDashboardProps) => {
       {/* Main Content */}
       <main className="flex-1 overflow-auto">
         <div className="p-6">
-          {activeView === "inbox" && <EmployeeInbox userId={user.id} />}
-          {activeView === "tasks" && <TaskList userId={user.id} isAdmin={false} />}
+          {activeView === "inbox" && <EmployeeInbox key={refreshTrigger} userId={user.id} />}
+          {activeView === "tasks" && <TaskList key={refreshTrigger} userId={user.id} isAdmin={false} />}
           {activeView === "chat" && <ChatInterface userId={user.id} />}
         </div>
       </main>
