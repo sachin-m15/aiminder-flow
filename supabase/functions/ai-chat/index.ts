@@ -6,6 +6,70 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// AI Provider helper - tries Lovable first, falls back to OpenAI
+async function callAI(messages: any[], apiKey: { lovable?: string; openai?: string }) {
+  // Try Lovable first (primary)
+  if (apiKey.lovable) {
+    try {
+      const lovableResult = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey.lovable}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages,
+        }),
+      });
+
+      if (lovableResult.ok) {
+        const data = await lovableResult.json();
+        return { success: true, data, provider: "lovable" };
+      }
+      
+      // Log Lovable error but don't throw - fallback to OpenAI
+      console.log(`Lovable API error (${lovableResult.status}), falling back to OpenAI...`);
+    } catch (error) {
+      console.log("Lovable API error:", error, "- falling back to OpenAI...");
+    }
+  }
+
+  // Fallback to OpenAI
+  if (apiKey.openai) {
+    try {
+      console.log("Calling OpenAI API...");
+      const openaiResult = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey.openai}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-2025-04-14",
+          messages,
+        }),
+      });
+
+      if (!openaiResult.ok) {
+        const errorData = await openaiResult.json();
+        console.error("OpenAI API error response:", errorData);
+        throw new Error(`OpenAI API error: ${errorData.error?.message || openaiResult.statusText}`);
+      }
+
+      const data = await openaiResult.json();
+      console.log("OpenAI API success!");
+      return { success: true, data, provider: "openai" };
+    } catch (error) {
+      console.error("OpenAI API error:", error);
+      throw error;
+    }
+  }
+
+  // No API keys available
+  throw new Error("No AI API keys configured. Please set LOVABLE_API_KEY or OPENAI_API_KEY.");
+}
+
 // Helper to calculate skill match score (aligned with frontend)
 const calculateMatchScore = (
   employee: any,
@@ -46,16 +110,30 @@ const calculateMatchScore = (
 };
 
 serve(async (req) => {
+  console.log("=== AI-CHAT FUNCTION CALLED ===");
+  
   if (req.method === "OPTIONS") {
+    console.log("OPTIONS request - returning CORS headers");
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { message, taskId, userId, action, actionData } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const body = await req.json();
+    console.log("Request body:", JSON.stringify(body, null, 2));
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const { message, taskId, userId, action, actionData, conversationId } = body;
+    
+    // Get API keys - try Lovable first, fallback to OpenAI
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    
+    console.log("API Keys status:", {
+      lovable: LOVABLE_API_KEY ? "✓ Present" : "✗ Missing",
+      openai: OPENAI_API_KEY ? "✓ Present" : "✗ Missing"
+    });
+    
+    if (!LOVABLE_API_KEY && !OPENAI_API_KEY) {
+      throw new Error("No AI API keys configured. Please set LOVABLE_API_KEY or OPENAI_API_KEY");
     }
 
     const supabase = createClient(
@@ -93,6 +171,7 @@ serve(async (req) => {
         const responseText = `✅ Task "${actionData.title}" created and invitation sent to ${actionData.employeeName}!`;
         await supabase.from("chat_messages").insert({
           user_id: userId,
+          conversation_id: conversationId,
           message: responseText,
           is_ai: true,
           task_id: task.id,
@@ -135,6 +214,7 @@ serve(async (req) => {
       const responseText = `✅ Task progress updated to ${progress}%${hoursLogged ? ` with ${hoursLogged} hours logged` : ""}`;
       await supabase.from("chat_messages").insert({
         user_id: userId,
+        conversation_id: conversationId,
         message: responseText,
         is_ai: true,
         task_id: taskId,
@@ -163,6 +243,7 @@ serve(async (req) => {
       const responseText = `✅ You've accepted the task! You can now start working on it.`;
       await supabase.from("chat_messages").insert({
         user_id: userId,
+        conversation_id: conversationId,
         message: responseText,
         is_ai: true,
         task_id: taskId,
@@ -191,6 +272,7 @@ serve(async (req) => {
       const responseText = `Task rejected${reason ? `: ${reason}` : "."}`;
       await supabase.from("chat_messages").insert({
         user_id: userId,
+        conversation_id: conversationId,
         message: responseText,
         is_ai: true,
         task_id: taskId,
@@ -310,26 +392,59 @@ ${taskList}`;
     }
 
     // Get user role
+    console.log("Fetching user role for userId:", userId);
     const { data: userRole } = await supabase
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
       .single();
+    console.log("User role:", userRole);
 
     // Get conversation history
+    console.log("Fetching conversation history...");
     const { data: history } = await supabase
       .from("chat_messages")
       .select("message, is_ai")
-      .is("task_id", taskId || null)
+      .eq("user_id", userId)
+      .eq("conversation_id", conversationId || "00000000-0000-0000-0000-000000000000")
+      .is("task_id", null)
       .order("created_at", { ascending: true })
       .limit(20);
+    console.log("History messages count:", history?.length || 0);
 
     const messages = [
       {
         role: "system",
-        content: `You are ChatFlow Agent, an AI assistant for task management. 
+        content: userRole?.role === "employee" 
+          ? `You are ChatFlow Support Agent, an AI support assistant.
 
-User role: ${userRole?.role || "employee"}
+User role: Employee
+
+Your purpose is SUPPORT ONLY. You can help with:
+- Questions about assigned tasks (view status, deadlines, requirements)
+- How to update task progress
+- How to accept or reject task invitations
+- How to log hours worked
+- General questions about using the task management system
+- Technical support with the platform
+
+You CANNOT and must NOT:
+- Create or assign tasks (only admins can do this)
+- Access other employees' information
+- Make management decisions
+- Provide information about company operations outside task management
+- Discuss payment or compensation details
+
+Your responses should:
+- Be helpful and supportive
+- Guide employees to use the correct features
+- Redirect admin-level requests to their manager
+- Stay focused on support and task-related queries
+
+Be professional, concise, and encouraging.`
+          : `You are ChatFlow Agent, an AI assistant for task management. 
+
+User role: ${userRole?.role || "admin"}
 
 Your capabilities:
 - Help admins create and assign tasks using natural language
@@ -337,13 +452,19 @@ Your capabilities:
 - Track task progress and provide updates
 - Generate payment estimates based on hours and complexity
 
+IMPORTANT RULES:
+1. NEVER invent or suggest employee names - only use names from the actual database query results
+2. If asked about employees or task assignment, acknowledge the request and wait for the system to fetch real employee data
+3. Do not make up skills, departments, or qualifications
+4. If no matching employees are found in the database, say so clearly
+
 When admins request task creation:
 1. Extract: title, description, required skills, priority, deadline, estimated hours
-2. Search for suitable employees based on skill match
-3. Present top 3 candidates with match scores and justifications
+2. The system will search for suitable employees based on skill match
+3. Present candidates ONLY from actual database results
 4. Wait for admin approval before creating task
 
-Be conversational, helpful, and professional.`,
+Be conversational, helpful, and professional. Stick to facts from the database.`,
       },
       ...(history || []).map((msg) => ({
         role: msg.is_ai ? "assistant" : "user",
@@ -358,12 +479,44 @@ Be conversational, helpful, and professional.`,
     // Detect if this is a task assignment request
     const isAdmin = userRole?.role === "admin" || userRole?.role === "staff";
     const taskKeywords = ["create task", "assign", "new task", "task for", "need someone", "find employee"];
+    const isEmployeeTryingTaskCreation = !isAdmin && taskKeywords.some(k => message.toLowerCase().includes(k));
     const isTaskRequest = isAdmin && taskKeywords.some(k => message.toLowerCase().includes(k));
+
+    console.log("Task request detection:", { isAdmin, isTaskRequest, isEmployeeTryingTaskCreation });
 
     let aiResponse = "";
     let metadata: any = {};
 
+    // Block employees from creating tasks
+    if (isEmployeeTryingTaskCreation) {
+      console.log("=== EMPLOYEE TRIED TO CREATE TASK - BLOCKED ===");
+      aiResponse = `I understand you're interested in task creation, but as an employee, you don't have permission to create or assign tasks. 
+
+Only administrators can create and assign tasks. 
+
+What I can help you with:
+- View your assigned tasks
+- Update progress on your tasks
+- Accept or reject task invitations
+- Log hours worked
+- Answer questions about your tasks
+
+Would you like to check your current tasks or need help with something else?`;
+
+      await supabase.from("chat_messages").insert({
+        user_id: userId,
+        conversation_id: conversationId,
+        message: aiResponse,
+        is_ai: true,
+      });
+
+      return new Response(JSON.stringify({ response: aiResponse }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (isTaskRequest) {
+      console.log("=== TASK REQUEST DETECTED ===");
       // Extract task details using AI
       const extractionMessages = [
         {
@@ -382,19 +535,14 @@ Be conversational, helpful, and professional.`,
         { role: "user", content: message }
       ];
 
-      const extractResult = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: extractionMessages,
-        }),
+      console.log("Calling AI for task extraction...");
+      const extractResult = await callAI(extractionMessages, { 
+        lovable: LOVABLE_API_KEY, 
+        openai: OPENAI_API_KEY 
       });
+      console.log("AI extraction result provider:", extractResult.provider);
 
-      const extractData = await extractResult.json();
+      const extractData = extractResult.data;
       let taskData;
       
       try {
@@ -407,8 +555,10 @@ Be conversational, helpful, and professional.`,
       }
 
       if (taskData.needsEmployeeMatch && taskData.skills?.length > 0) {
+        console.log("Fetching employees with skills:", taskData.skills);
+        
         // Fetch available employees
-        const { data: employees } = await supabase
+        const { data: employees, error: employeeError } = await supabase
           .from("employee_profiles")
           .select(`
             user_id,
@@ -425,7 +575,16 @@ Be conversational, helpful, and professional.`,
           `)
           .eq("availability", true);
 
+        console.log("Employees fetched:", employees?.length || 0);
+        if (employeeError) {
+          console.error("Error fetching employees:", employeeError);
+        }
+        
         if (employees && employees.length > 0) {
+          console.log("Employee names:", employees.map(e => {
+            const profile = Array.isArray(e.profiles) ? e.profiles[0] : e.profiles;
+            return profile?.full_name || "Unknown";
+          }));
           // Calculate match scores
           const scoredEmployees = employees
             .map((emp) => ({
@@ -494,6 +653,7 @@ Would you like to send an invitation to the top match?`;
           // Store in chat
           await supabase.from("chat_messages").insert({
             user_id: userId,
+            conversation_id: conversationId,
             message: aiResponse,
             is_ai: true,
             metadata,
@@ -502,42 +662,57 @@ Would you like to send an invitation to the top match?`;
           return new Response(JSON.stringify({ response: aiResponse, metadata }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
+        } else {
+          // No employees found
+          console.log("No available employees found matching criteria");
+          aiResponse = `I couldn't find any available employees matching the required skills (${taskData.skills?.join(", ")}).
+
+You might want to:
+1. Adjust the required skills
+2. Check if employees are marked as available
+3. Add more employees to the system
+
+Would you like me to help with something else?`;
+
+          await supabase.from("chat_messages").insert({
+            user_id: userId,
+            conversation_id: conversationId,
+            message: aiResponse,
+            is_ai: true,
+          });
+
+          return new Response(JSON.stringify({ response: aiResponse }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
         }
       }
     }
 
     // Regular conversation
-    const aiResult = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages,
-      }),
+    console.log("=== REGULAR CONVERSATION ===");
+    console.log("Calling AI with", messages.length, "messages...");
+    
+    const aiResult = await callAI(messages, { 
+      lovable: LOVABLE_API_KEY, 
+      openai: OPENAI_API_KEY 
     });
+    console.log("AI response received from:", aiResult.provider);
 
-    if (!aiResult.ok) {
-      if (aiResult.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Rate limit exceeded. Please try again later." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (aiResult.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required. Please add credits to your workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      throw new Error("AI gateway error");
-    }
-
-    const aiData = await aiResult.json();
+    const aiData = aiResult.data;
     aiResponse = aiData.choices[0].message.content;
+    console.log("AI response length:", aiResponse.length);
 
+    console.log("Inserting AI message to database...");
+    await supabase.from("chat_messages").insert({
+      user_id: userId,
+      conversation_id: conversationId,
+      message: aiResponse,
+      is_ai: true,
+      task_id: taskId || null,
+    });
+    console.log("Message inserted successfully");
+
+    console.log("=== RETURNING RESPONSE ===");
     return new Response(
       JSON.stringify({ response: aiResponse, metadata }),
       {
@@ -545,7 +720,8 @@ Would you like to send an invitation to the top match?`;
       }
     );
   } catch (error) {
-    console.error("Error in ai-chat function:", error);
+    console.error("❌ ERROR in ai-chat function:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
     return new Response(
       JSON.stringify({ error: errorMessage }),

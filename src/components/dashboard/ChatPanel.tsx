@@ -53,18 +53,23 @@ const ChatPanel = ({ userId, onTaskCreated }: ChatPanelProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [pendingTaskData, setPendingTaskData] = useState<Partial<Task> | null>(null);
   const [userTasks, setUserTasks] = useState<Task[]>([]);
+  const [conversationId, setConversationId] = useState<string>("");
 
   const loadMessages = useCallback(async () => {
+    if (!conversationId) return;
+
+    // Fetch only messages for this specific user and conversation
     const { data } = await supabase
       .from("chat_messages")
       .select("*")
-      .or(`user_id.eq.${userId},is_ai.eq.true`)
+      .eq("user_id", userId)
+      .eq("conversation_id", conversationId)
       .is("task_id", null)
       .order("created_at", { ascending: true })
       .limit(50);
 
     if (data) setMessages(data as Message[]);
-  }, [userId]);
+  }, [userId, conversationId]);
 
   const loadUserTasks = useCallback(async () => {
     const { data } = await supabase
@@ -78,23 +83,53 @@ const ChatPanel = ({ userId, onTaskCreated }: ChatPanelProps) => {
   }, [userId]);
 
   useEffect(() => {
+    // Get or create a conversation ID for this user
+    const initConversation = async () => {
+      // Try to get existing conversation from localStorage
+      let convId = localStorage.getItem(`chat_conversation_${userId}`);
+
+      if (!convId) {
+        // Create new conversation ID
+        convId = crypto.randomUUID();
+        localStorage.setItem(`chat_conversation_${userId}`, convId);
+      }
+
+      setConversationId(convId);
+    };
+
+    initConversation();
+  }, [userId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+
     loadMessages();
     loadUserTasks();
 
+    // Subscribe to chat messages for this specific user and conversation only
     const channel = supabase
-      .channel("chat-updates")
-      .on("postgres_changes", { event: "*", schema: "public", table: "chat_messages" }, () => {
-        loadMessages();
-      })
+      .channel(`chat-updates-${userId}-${conversationId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_messages",
+          filter: `user_id=eq.${userId},conversation_id=eq.${conversationId}`,
+        },
+        () => {
+          loadMessages();
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId, loadMessages, loadUserTasks]);
+  }, [userId, conversationId, loadMessages, loadUserTasks]);
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || !conversationId) return;
 
     const userMessage = input.trim();
     setInput("");
@@ -104,13 +139,14 @@ const ChatPanel = ({ userId, onTaskCreated }: ChatPanelProps) => {
       // Insert user message
       await supabase.from("chat_messages").insert({
         user_id: userId,
+        conversation_id: conversationId,
         message: userMessage,
         is_ai: false,
       });
 
       // Call AI function
       const { data, error } = await supabase.functions.invoke("ai-chat", {
-        body: { message: userMessage, userId },
+        body: { message: userMessage, userId, conversationId },
       });
 
       if (error) throw error;
