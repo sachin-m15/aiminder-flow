@@ -2,12 +2,13 @@ import { User } from "@supabase/supabase-js";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, ListTodo, MessageSquare, Inbox } from "lucide-react";
+import { LogOut, ListTodo, MessageSquare, Inbox, DollarSign } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TaskList from "./TaskList";
 import ChatInterface from "./ChatInterface";
 import EmployeeInbox from "./EmployeeInbox";
+import PaymentManagement from "./PaymentManagement";
 import { useRealtimeNotifications } from "@/hooks/use-realtime-notifications";
 
 interface EmployeeDashboardProps {
@@ -73,6 +74,14 @@ const EmployeeDashboard = ({ user }: EmployeeDashboardProps) => {
             My Tasks
           </Button>
           <Button
+            variant={activeView === "payments" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("payments")}
+          >
+            <DollarSign className="mr-2 h-4 w-4" />
+            My Payments
+          </Button>
+          <Button
             variant={activeView === "chat" ? "default" : "ghost"}
             className="w-full justify-start"
             onClick={() => setActiveView("chat")}
@@ -95,6 +104,7 @@ const EmployeeDashboard = ({ user }: EmployeeDashboardProps) => {
         <div className="p-6">
           {activeView === "inbox" && <EmployeeInbox key={refreshTrigger} userId={user.id} />}
           {activeView === "tasks" && <TaskList key={refreshTrigger} userId={user.id} isAdmin={false} />}
+          {activeView === "payments" && <PaymentManagement userId={user.id} userRole="employee" />}
           {activeView === "chat" && <ChatInterface userId={user.id} />}
         </div>
       </main>

@@ -2,7 +2,7 @@ import { User } from "@supabase/supabase-js";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LogOut, Users, ListTodo, BarChart3, Settings, Search, MessageSquare } from "lucide-react";
+import { LogOut, Users, ListTodo, BarChart3, Settings, Search, MessageSquare, DollarSign } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import EmployeeList from "./EmployeeList";
 import TaskList from "./TaskList";
 import DashboardSummary from "./DashboardSummary";
 import ChatPanel from "./ChatPanel";
+import PaymentManagement from "./PaymentManagement";
 import { useRealtimeNotifications } from "@/hooks/use-realtime-notifications";
 
 interface AdminDashboardProps {
@@ -83,6 +84,14 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
             Projects / Tasks
           </Button>
           <Button
+            variant={activeView === "payments" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("payments")}
+          >
+            <DollarSign className="mr-2 h-4 w-4" />
+            Payments
+          </Button>
+          <Button
             variant={activeView === "settings" ? "default" : "ghost"}
             className="w-full justify-start"
             onClick={() => setActiveView("settings")}
@@ -129,6 +138,7 @@ const AdminDashboard = ({ user }: AdminDashboardProps) => {
           {activeView === "chat" && <ChatPanel userId={user.id} onTaskCreated={() => setActiveView("tasks")} />}
           {activeView === "employees" && <EmployeeList searchQuery={searchQuery} />}
           {activeView === "tasks" && <TaskList key={refreshTrigger} userId={user.id} isAdmin={true} searchQuery={searchQuery} />}
+          {activeView === "payments" && <PaymentManagement userId={user.id} userRole="admin" />}
           {activeView === "settings" && (
             <Card>
               <CardHeader>
