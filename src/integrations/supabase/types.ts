@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -34,51 +39,10 @@ export type Database = {
   }
   public: {
     Tables: {
-      chat_messages: {
-        Row: {
-          conversation_id: string | null
-          created_at: string | null
-          id: string
-          is_ai: boolean | null
-          message: string
-          metadata: Json | null
-          task_id: string | null
-          user_id: string
-        }
-        Insert: {
-          conversation_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_ai?: boolean | null
-          message: string
-          metadata?: Json | null
-          task_id?: string | null
-          user_id: string
-        }
-        Update: {
-          conversation_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_ai?: boolean | null
-          message?: string
-          metadata?: Json | null
-          task_id?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_messages_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       employee_profiles: {
         Row: {
           availability: boolean | null
-          avg_completion_time: unknown | null
+          avg_completion_time: unknown
           created_at: string | null
           current_workload: number | null
           department: string | null
@@ -88,14 +52,13 @@ export type Database = {
           on_time_rate: number | null
           performance_score: number | null
           quality_score: number | null
-          skills: string[]
           tasks_completed: number | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           availability?: boolean | null
-          avg_completion_time?: unknown | null
+          avg_completion_time?: unknown
           created_at?: string | null
           current_workload?: number | null
           department?: string | null
@@ -105,14 +68,13 @@ export type Database = {
           on_time_rate?: number | null
           performance_score?: number | null
           quality_score?: number | null
-          skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           availability?: boolean | null
-          avg_completion_time?: unknown | null
+          avg_completion_time?: unknown
           created_at?: string | null
           current_workload?: number | null
           department?: string | null
@@ -122,12 +84,43 @@ export type Database = {
           on_time_rate?: number | null
           performance_score?: number | null
           quality_score?: number | null
-          skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      employee_skills: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          id: string
+          skill: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          skill: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          skill?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_skills_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employee_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invitations: {
         Row: {
@@ -241,6 +234,38 @@ export type Database = {
         }
         Relationships: []
       }
+      task_required_skills: {
+        Row: {
+          created_at: string | null
+          id: string
+          skill: string
+          task_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          skill: string
+          task_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          skill?: string
+          task_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_required_skills_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_updates: {
         Row: {
           created_at: string | null
@@ -293,7 +318,6 @@ export type Database = {
           id: string
           priority: string | null
           progress: number | null
-          required_skills: string[] | null
           started_at: string | null
           status: Database["public"]["Enums"]["task_status"] | null
           title: string
@@ -312,7 +336,6 @@ export type Database = {
           id?: string
           priority?: string | null
           progress?: number | null
-          required_skills?: string[] | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title: string
@@ -331,7 +354,6 @@ export type Database = {
           id?: string
           priority?: string | null
           progress?: number | null
-          required_skills?: string[] | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title?: string
@@ -365,9 +387,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      clear_sample_data: {
-        Args: Record<PropertyKey, never>
-        Returns: string
+      clear_consolidated_sample_data: { Args: never; Returns: string }
+      get_employee_skills: { Args: { _employee_id: string }; Returns: string[] }
+      get_task_required_skills: {
+        Args: { _task_id: string }
+        Returns: string[]
       }
       has_role: {
         Args: {
@@ -376,10 +400,7 @@ export type Database = {
         }
         Returns: boolean
       }
-      make_user_admin: {
-        Args: { user_email: string }
-        Returns: string
-      }
+      make_user_admin: { Args: { user_email: string }; Returns: string }
       make_user_employee: {
         Args: {
           user_department?: string
@@ -389,10 +410,7 @@ export type Database = {
         }
         Returns: string
       }
-      seed_sample_data: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      seed_consolidated_sample_data: { Args: never; Returns: string }
     }
     Enums: {
       app_role: "admin" | "staff" | "employee"
@@ -545,4 +563,3 @@ export const Constants = {
     },
   },
 } as const
-

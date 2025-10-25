@@ -43,11 +43,45 @@ const DashboardSummary = () => {
   useEffect(() => {
     fetchDashboardStats();
 
-    // Real-time updates
+    // Optimized real-time updates with selective field retrieval
     const channel = supabase
-      .channel("dashboard-stats")
-      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchDashboardStats)
-      .on("postgres_changes", { event: "*", schema: "public", table: "employee_profiles" }, fetchDashboardStats)
+      .channel("optimized-dashboard-stats")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "tasks",
+        },
+        fetchDashboardStats
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "tasks",
+        },
+        fetchDashboardStats
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "employee_profiles",
+        },
+        fetchDashboardStats
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "employee_profiles",
+        },
+        fetchDashboardStats
+      )
       .subscribe();
 
     return () => {
@@ -89,9 +123,9 @@ const DashboardSummary = () => {
         .order("tasks_completed", { ascending: false })
         .limit(5);
 
-      const topPerformers = topPerformersData?.map((emp: any) => ({
+      const topPerformers = topPerformersData?.map((emp) => ({
         id: emp.id,
-        name: emp.profiles.full_name,
+        name: (emp.profiles as unknown as { full_name: string }).full_name,
         performance_score: emp.performance_score || 0,
         tasks_completed: emp.tasks_completed || 0,
         department: emp.department || "Unassigned",
@@ -103,12 +137,12 @@ const DashboardSummary = () => {
         .select("department, performance_score");
 
       const departmentMap = new Map<string, { total: number; sum: number }>();
-      departmentData?.forEach((emp: any) => {
-        const dept = emp.department || "Unassigned";
+      departmentData?.forEach((emp) => {
+        const dept = (emp.department as string) || "Unassigned";
         const current = departmentMap.get(dept) || { total: 0, sum: 0 };
         departmentMap.set(dept, {
           total: current.total + 1,
-          sum: current.sum + (emp.performance_score || 0),
+          sum: current.sum + ((emp.performance_score as number) || 0),
         });
       });
 
@@ -138,8 +172,8 @@ const DashboardSummary = () => {
         { range: "6+ tasks", min: 6, max: 999, count: 0 },
       ];
 
-      workloadData?.forEach((emp: any) => {
-        const workload = emp.current_workload || 0;
+      workloadData?.forEach((emp) => {
+        const workload = (emp.current_workload as number) || 0;
         for (const range of workloadRanges) {
           if (workload >= range.min && workload <= range.max) {
             range.count++;
@@ -244,9 +278,9 @@ const DashboardSummary = () => {
                   <div key={performer.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
                     <div className="flex items-center gap-3">
                       <div className={`flex items-center justify-center w-8 h-8 rounded-full ${index === 0 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300" :
-                          index === 1 ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
-                            index === 2 ? "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" :
-                              "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                        index === 1 ? "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300" :
+                          index === 2 ? "bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300" :
+                            "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
                         }`}>
                         {index + 1}
                       </div>

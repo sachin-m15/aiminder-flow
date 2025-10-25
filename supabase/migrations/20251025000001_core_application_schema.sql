@@ -179,7 +179,7 @@ BEGIN
   
   -- Check if this is an admin email
   is_admin_email := user_email = 'admin@gmail.com' OR user_email LIKE '%@admin.%';
-  
+
   -- 1. Create profile entry
   INSERT INTO public.profiles (id, full_name, email)
   VALUES (
@@ -187,7 +187,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
     NEW.email
   );
-  
+
   -- 2. Assign role based on email
   IF is_admin_email THEN
     -- Assign admin role
@@ -198,27 +198,26 @@ BEGIN
     INSERT INTO public.user_roles (user_id, role)
     VALUES (NEW.id, 'employee');
     
-    -- 3. Create employee profile for non-admin users
+    -- 3. Create employee profile for non-admin users (skills handled in junction table)
     INSERT INTO public.employee_profiles (
       user_id,
-      skills,
       availability,
       current_workload,
       performance_score,
       tasks_completed
     ) VALUES (
       NEW.id,
-      '{}',  -- Empty skills array, to be filled later
       true,  -- Available by default
       0,     -- No workload initially
       0.0,   -- No performance score yet
       0      -- No tasks completed
     );
   END IF;
-  
+
   RETURN NEW;
 END;
 $$;
+
 
 -- Function to manually make a user an admin
 CREATE OR REPLACE FUNCTION public.make_user_admin(user_email TEXT)
@@ -291,10 +290,9 @@ BEGIN
   VALUES (target_user_id, 'employee')
   ON CONFLICT (user_id, role) DO NOTHING;
   
-  -- Create or update employee profile
+  -- Create or update employee profile (without skills - handled separately in junction table)
   INSERT INTO public.employee_profiles (
     user_id,
-    skills,
     department,
     designation,
     availability,
@@ -303,7 +301,6 @@ BEGIN
     tasks_completed
   ) VALUES (
     target_user_id,
-    user_skills,
     user_department,
     user_designation,
     true,
@@ -312,7 +309,6 @@ BEGIN
     0
   )
   ON CONFLICT (user_id) DO UPDATE SET
-    skills = user_skills,
     department = user_department,
     designation = user_designation;
   

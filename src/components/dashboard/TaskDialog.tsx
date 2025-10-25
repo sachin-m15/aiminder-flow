@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -17,7 +19,17 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp } from "lucide-react";
-import ChatInterface from "./ChatInterface";
+// import ChatInterface from "./ChatInterface"; // TODO: Component not yet implemented
+import { taskProgressSchema, type TaskProgressFormData } from "@/lib/validation";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import ErrorBoundary from "@/components/ui/error-boundary";
 
 interface Task {
   id: string;
@@ -54,12 +66,18 @@ interface TaskDialogProps {
 }
 
 const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) => {
-  const [progress, setProgress] = useState(task.progress);
-  const [updateText, setUpdateText] = useState("");
-  const [hoursLogged, setHoursLogged] = useState<number>(0);
   const [loading, setLoading] = useState(false);
   const [taskUpdates, setTaskUpdates] = useState<TaskUpdate[]>([]);
   const [loadingUpdates, setLoadingUpdates] = useState(true);
+
+  const form = useForm<TaskProgressFormData>({
+    resolver: zodResolver(taskProgressSchema),
+    defaultValues: {
+      progress: task.progress,
+      hoursLogged: 0,
+      updateText: "",
+    },
+  });
 
   const loadTaskUpdates = async () => {
     setLoadingUpdates(true);
@@ -96,35 +114,34 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, task.id]);
 
-  const handleUpdateProgress = async () => {
+  const handleUpdateProgress = async (data: TaskProgressFormData) => {
     setLoading(true);
     try {
       // Update task progress
       const { error: taskError } = await supabase
         .from("tasks")
-        .update({ progress, status: progress === 100 ? "completed" : "ongoing" })
+        .update({ progress: data.progress, status: data.progress === 100 ? "completed" : "ongoing" })
         .eq("id", task.id);
 
       if (taskError) throw taskError;
 
       // Add update entry
-      if (updateText.trim() || hoursLogged > 0) {
+      if (data.updateText?.trim() || (data.hoursLogged && data.hoursLogged > 0)) {
         const { error: updateError } = await supabase
           .from("task_updates")
           .insert({
             task_id: task.id,
             user_id: userId,
-            update_text: updateText || `Progress updated to ${progress}%`,
-            progress,
-            hours_logged: hoursLogged > 0 ? hoursLogged : null,
+            update_text: data.updateText || `Progress updated to ${data.progress}%`,
+            progress: data.progress,
+            hours_logged: data.hoursLogged > 0 ? data.hoursLogged : null,
           });
 
         if (updateError) throw updateError;
       }
 
       toast.success("Task updated successfully");
-      setUpdateText("");
-      setHoursLogged(0);
+      form.reset();
       loadTaskUpdates();
       onClose();
     } catch (error) {
@@ -207,231 +224,295 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <DialogTitle className="text-2xl">{task.title}</DialogTitle>
-              <div className="flex items-center gap-2 mt-2">
-                {getStatusBadge(task.status)}
-                {getPriorityBadge(task.priority)}
+    <ErrorBoundary componentName="TaskDialog">
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent
+          className="max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-hidden flex flex-col mx-2 md:mx-0"
+          aria-labelledby="task-dialog-title"
+          onOpenAutoFocus={(e) => {
+            // Prevent auto-focus on first element, let user navigate naturally
+            e.preventDefault();
+          }}
+        >
+          <DialogHeader>
+            <div className="flex items-start justify-between">
+              <div>
+                <DialogTitle className="text-2xl" id="task-dialog-title">{task.title}</DialogTitle>
+                <div className="flex items-center gap-2 mt-2" aria-label={`Status: ${task.status}, Priority: ${task.priority}`}>
+                  {getStatusBadge(task.status)}
+                  {getPriorityBadge(task.priority)}
+                </div>
               </div>
             </div>
-          </div>
-        </DialogHeader>
+          </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto space-y-6 py-4">
-          {/* Task Details */}
-          <Card>
-            <CardContent className="pt-6 space-y-4">
-              <div>
-                <Label className="text-lg font-semibold">Description</Label>
-                <p className="text-sm text-muted-foreground mt-2">{task.description}</p>
-              </div>
+          <div className="flex-1 overflow-y-auto space-y-4 md:space-y-6 py-2 md:py-4">
+            {/* Task Details */}
+            <Card>
+              <CardContent className="pt-4 md:pt-6 space-y-3 md:space-y-4">
+                <div>
+                  <Label className="text-base md:text-lg font-semibold" id="task-description-label">Description</Label>
+                  <p className="text-xs md:text-sm text-muted-foreground mt-1 md:mt-2" aria-labelledby="task-description-label">
+                    {task.description}
+                  </p>
+                </div>
 
-              <Separator />
+                <Separator aria-hidden="true" />
 
-              <div className="grid grid-cols-2 gap-4">
-                {task.profiles && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                  {task.profiles && (
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Assigned To</Label>
+                        <p className="text-sm font-medium" aria-label={`Assigned to: ${task.profiles.full_name}`}>
+                          {task.profiles.full_name}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {task.deadline && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Deadline</Label>
+                        <p className="text-sm font-medium" aria-label={`Deadline: ${new Date(task.deadline).toLocaleDateString()}`}>
+                          {new Date(task.deadline).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-muted-foreground" />
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     <div>
-                      <Label className="text-xs text-muted-foreground">Assigned To</Label>
-                      <p className="text-sm font-medium">{task.profiles.full_name}</p>
+                      <Label className="text-xs text-muted-foreground">Progress</Label>
+                      <p className="text-sm font-medium" aria-label={`Progress: ${task.progress}%`}>
+                        {task.progress}%
+                      </p>
                     </div>
                   </div>
-                )}
 
-                {task.deadline && (
                   <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     <div>
-                      <Label className="text-xs text-muted-foreground">Deadline</Label>
-                      <p className="text-sm font-medium">{new Date(task.deadline).toLocaleDateString()}</p>
+                      <Label className="text-xs text-muted-foreground">Created</Label>
+                      <p className="text-sm font-medium" aria-label={`Created: ${new Date(task.created_at).toLocaleDateString()}`}>
+                        {new Date(task.created_at).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
-                )}
+                </div>
 
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Progress</Label>
-                    <p className="text-sm font-medium">{task.progress}%</p>
+                {/* Progress Bar */}
+                <div>
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">Overall Progress</span>
+                    <span className="font-medium" aria-hidden="true">{task.progress}%</span>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Created</Label>
-                    <p className="text-sm font-medium">{new Date(task.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div>
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-muted-foreground">Overall Progress</span>
-                  <span className="font-medium">{task.progress}%</span>
-                </div>
-                <div className="w-full bg-secondary rounded-full h-3">
                   <div
-                    className="bg-primary h-3 rounded-full transition-all"
-                    style={{ width: `${task.progress}%` }}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Accept/Reject for invited tasks */}
-          {!isAdmin && task.assigned_to === userId && task.status === "invited" && (
-            <Card className="border-yellow-200 bg-yellow-50">
-              <CardContent className="pt-6">
-                <p className="text-sm mb-4">You have been invited to work on this task. Do you want to accept?</p>
-                <div className="flex gap-2">
-                  <Button
-                    onClick={handleAcceptTask}
-                    disabled={loading}
-                    className="flex-1"
+                    className="w-full bg-secondary rounded-full h-3"
+                    role="progressbar"
+                    aria-valuenow={task.progress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`Task progress: ${task.progress}%`}
                   >
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Accept Task
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={handleRejectTask}
-                    disabled={loading}
-                    className="flex-1"
-                  >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject Task
-                  </Button>
+                    <div
+                      className="bg-primary h-3 rounded-full transition-all"
+                      style={{ width: `${task.progress}%` }}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* Update Progress (for assigned employees) */}
-          {!isAdmin && task.assigned_to === userId && (task.status === "accepted" || task.status === "ongoing") && (
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div>
-                  <Label className="text-lg font-semibold mb-4 block">Update Progress</Label>
-
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label>Progress: {progress}%</Label>
-                        {progress === 100 && (
-                          <Badge className="bg-green-500">
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                            Ready to Complete
-                          </Badge>
-                        )}
-                      </div>
-                      <Slider
-                        value={[progress]}
-                        onValueChange={(value) => setProgress(value[0])}
-                        max={100}
-                        step={5}
-                        className="w-full"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="hours">Hours Worked (Optional)</Label>
-                      <Input
-                        id="hours"
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        placeholder="0.0"
-                        value={hoursLogged || ""}
-                        onChange={(e) => setHoursLogged(parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="update">Progress Note</Label>
-                      <Textarea
-                        id="update"
-                        placeholder="Describe what you've completed..."
-                        value={updateText}
-                        onChange={(e) => setUpdateText(e.target.value)}
-                        rows={3}
-                      />
-                    </div>
-
+            {/* Accept/Reject for invited tasks */}
+            {!isAdmin && task.assigned_to === userId && task.status === "invited" && (
+              <Card className="border-yellow-200 bg-yellow-50" role="region" aria-label="Task invitation">
+                <CardContent className="pt-6">
+                  <p className="text-sm mb-4">You have been invited to work on this task. Do you want to accept?</p>
+                  <div className="flex gap-2">
                     <Button
-                      onClick={handleUpdateProgress}
+                      onClick={handleAcceptTask}
                       disabled={loading}
-                      className="w-full"
+                      className="flex-1"
+                      aria-busy={loading}
                     >
-                      <Send className="mr-2 h-4 w-4" />
-                      {loading ? "Submitting..." : "Submit Update"}
+                      <CheckCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Accept Task
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={handleRejectTask}
+                      disabled={loading}
+                      className="flex-1"
+                      aria-busy={loading}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Reject Task
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Update Progress (for assigned employees) */}
+            {!isAdmin && task.assigned_to === userId && (task.status === "accepted" || task.status === "ongoing") && (
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <div>
+                    <Label className="text-lg font-semibold mb-4 block">Update Progress</Label>
+
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleUpdateProgress)} className="space-y-4">
+                        <FormField
+                          control={form.control}
+                          name="progress"
+                          render={({ field }) => (
+                            <FormItem>
+                              <div className="flex items-center justify-between">
+                                <FormLabel htmlFor="progress-slider">Progress: {field.value}%</FormLabel>
+                                {field.value === 100 && (
+                                  <Badge className="bg-green-500">
+                                    <CheckCircle className="h-3 w-3 mr-1" aria-hidden="true" />
+                                    Ready to Complete
+                                  </Badge>
+                                )}
+                              </div>
+                              <FormControl>
+                                <Slider
+                                  id="progress-slider"
+                                  value={[field.value]}
+                                  onValueChange={(value) => field.onChange(value[0])}
+                                  max={100}
+                                  step={5}
+                                  className="w-full"
+                                  aria-label="Update task progress"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="hoursLogged"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel htmlFor="hours-logged">Hours Worked (Optional)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  id="hours-logged"
+                                  type="number"
+                                  min="0"
+                                  step="0.5"
+                                  placeholder="0.0"
+                                  value={field.value || ""}
+                                  onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 0)}
+                                  aria-describedby="hours-logged-description"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="updateText"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel htmlFor="progress-note">Progress Note</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  id="progress-note"
+                                  placeholder="Describe what you've completed..."
+                                  {...field}
+                                  rows={3}
+                                  aria-describedby="progress-note-description"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <Button
+                          type="submit"
+                          disabled={loading}
+                          className="w-full"
+                          aria-busy={loading}
+                        >
+                          <Send className="mr-2 h-4 w-4" aria-hidden="true" />
+                          {loading ? "Submitting..." : "Submit Update"}
+                        </Button>
+                      </form>
+                    </Form>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Task History */}
+            <Card>
+              <CardContent className="pt-4 md:pt-6">
+                <Label className="text-base md:text-lg font-semibold mb-3 md:mb-4 block" id="task-history-label">Task History</Label>
+                <ScrollArea className="h-[200px] md:h-[300px] pr-4" aria-labelledby="task-history-label">
+                  {loadingUpdates ? (
+                    <p className="text-sm text-muted-foreground" aria-live="polite">Loading updates...</p>
+                  ) : taskUpdates.length === 0 ? (
+                    <p className="text-sm text-muted-foreground" aria-live="polite">No updates yet</p>
+                  ) : (
+                    <div className="space-y-4" role="list" aria-label="Task update history">
+                      {taskUpdates.map((update) => (
+                        <div key={update.id} className="border-l-2 border-primary pl-4 pb-4" role="listitem">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <p className="font-medium text-sm" aria-label={`Updated by: ${update.profiles?.full_name || "Unknown User"}`}>
+                                {update.profiles?.full_name || "Unknown User"}
+                              </p>
+                              <p className="text-xs text-muted-foreground" aria-label={`Date: ${new Date(update.created_at).toLocaleString()}`}>
+                                {new Date(update.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="text-xs" aria-label={`Progress: ${update.progress}%`}>
+                                {update.progress}%
+                              </Badge>
+                              {update.hours_logged && (
+                                <Badge variant="outline" className="text-xs" aria-label={`Hours logged: ${update.hours_logged}`}>
+                                  <Clock className="h-3 w-3 mr-1" aria-hidden="true" />
+                                  {update.hours_logged}h
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-sm" aria-label="Update details">{update.update_text}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Task Chat */}
+            <Card>
+              <CardContent className="pt-6">
+                <Label className="text-lg font-semibold mb-4 block" id="task-chat-label">Task Discussion</Label>
+                {/* TODO: Implement ChatInterface component */}
+                <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-md">
+                  Chat interface coming soon...
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* Task History */}
-          <Card>
-            <CardContent className="pt-6">
-              <Label className="text-lg font-semibold mb-4 block">Task History</Label>
-              <ScrollArea className="h-[300px] pr-4">
-                {loadingUpdates ? (
-                  <p className="text-sm text-muted-foreground">Loading updates...</p>
-                ) : taskUpdates.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No updates yet</p>
-                ) : (
-                  <div className="space-y-4">
-                    {taskUpdates.map((update) => (
-                      <div key={update.id} className="border-l-2 border-primary pl-4 pb-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
-                            <p className="font-medium text-sm">
-                              {update.profiles?.full_name || "Unknown User"}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(update.created_at).toLocaleString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-xs">
-                              {update.progress}%
-                            </Badge>
-                            {update.hours_logged && (
-                              <Badge variant="outline" className="text-xs">
-                                <Clock className="h-3 w-3 mr-1" />
-                                {update.hours_logged}h
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <p className="text-sm">{update.update_text}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
-
-          {/* Task Chat */}
-          <Card>
-            <CardContent className="pt-6">
-              <Label className="text-lg font-semibold mb-4 block">Task Discussion</Label>
-              <ChatInterface userId={userId} taskId={task.id} />
-            </CardContent>
-          </Card>
-        </div>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </ErrorBoundary>
   );
 };
 

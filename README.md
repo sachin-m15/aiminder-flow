@@ -6,7 +6,6 @@ An intelligent task management and employee tracking platform powered by AI. Man
 
 ### For Administrators
 - 📊 **Comprehensive Dashboard** - Real-time analytics, performance metrics, and team insights
-- 🤖 **AI Task Assignment** - Assign projects by simply describing them in chat
 - 👥 **Employee Management** - Track skills, performance, workload, and availability
 - 📈 **Performance Analytics** - Department productivity, top performers, workload balance
 - 💰 **Payment Management** - Compare actual vs AI-estimated compensation
@@ -14,7 +13,6 @@ An intelligent task management and employee tracking platform powered by AI. Man
 ### For Employees
 - 📬 **Task Inbox** - Receive, accept, or reject task invitations
 - ✅ **Task Management** - Update progress, log hours, submit work
-- 💬 **Direct Communication** - Chat with admins for clarifications
 - 📊 **Performance Tracking** - View your metrics and completed tasks
 
 ## 🚀 Quick Start

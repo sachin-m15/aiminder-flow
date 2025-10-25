@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -17,6 +19,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Star, TrendingUp, Users, Zap, CheckCircle, AlertCircle } from "lucide-react";
+import { taskAssignmentSchema, type TaskAssignmentFormData } from "@/lib/validation";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 interface TaskAssignmentDialogProps {
   open: boolean;
@@ -43,15 +54,21 @@ interface EmployeeWithScore extends Employee {
 }
 
 const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogProps) => {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [deadline, setDeadline] = useState("");
-  const [requiredSkills, setRequiredSkills] = useState("");
-  const [selectedEmployee, setSelectedEmployee] = useState("");
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
+
+  const form = useForm<TaskAssignmentFormData>({
+    resolver: zodResolver(taskAssignmentSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      priority: "medium",
+      deadline: "",
+      requiredSkills: "",
+      selectedEmployee: "",
+    },
+  });
 
   useEffect(() => {
     if (open) {
@@ -61,27 +78,61 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
   const loadEmployees = async () => {
     try {
-      const { data, error } = await supabase
+      // First, get employee profiles (without skills column)
+      const { data: employeeData, error: empError } = await supabase
         .from("employee_profiles")
-        .select(`
-          user_id,
-          skills,
-          department,
-          designation,
-          performance_score,
-          current_workload,
-          profiles!employee_profiles_user_id_fkey (
-            full_name
-          )
-        `);
+        .select("id, user_id, department, designation, performance_score, current_workload");
 
-      if (error) throw error;
-      setEmployees((data as unknown as Employee[]) || []);
+      if (empError) throw empError;
+
+      if (!employeeData || employeeData.length === 0) {
+        setEmployees([]);
+        return;
+      }
+
+      // Get employee IDs and user IDs
+      const employeeIds = employeeData.map(e => e.id);
+      const userIds = employeeData.map(e => e.user_id);
+
+      // Fetch skills from employee_skills table
+      const { data: skillsData, error: skillsError } = await supabase
+        .from("employee_skills")
+        .select("employee_id, skill")
+        .in("employee_id", employeeIds);
+
+      if (skillsError) throw skillsError;
+
+      // Fetch profiles for those users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", userIds);
+
+      if (profilesError) throw profilesError;
+
+      // Merge the data
+      const employeesWithProfiles = employeeData.map(emp => {
+        const empSkills = skillsData?.filter(s => s.employee_id === emp.id).map(s => s.skill) || [];
+        return {
+          user_id: emp.user_id,
+          department: emp.department,
+          designation: emp.designation,
+          performance_score: emp.performance_score,
+          current_workload: emp.current_workload,
+          skills: empSkills,
+          profiles: profilesData?.find(p => p.id === emp.user_id) || null
+        };
+      });
+
+      setEmployees(employeesWithProfiles as unknown as Employee[]);
     } catch (error) {
       console.error("Error loading employees:", error);
       toast.error("Failed to load employees");
     }
   };
+
+  // Watch required skills for AI recommendations
+  const requiredSkills = form.watch("requiredSkills") || "";
 
   // AI-powered employee scoring algorithm
   const rankedEmployees = useMemo((): EmployeeWithScore[] => {
@@ -134,20 +185,15 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
   const topRecommendations = rankedEmployees.slice(0, 3);
 
-  const handleSubmit = async () => {
-    if (!title || !description || !selectedEmployee) {
-      toast.error("Please fill all required fields");
-      return;
-    }
-
+  const handleSubmit = async (data: TaskAssignmentFormData) => {
     setLoading(true);
     try {
       const { error } = await supabase.from("tasks").insert({
-        title,
-        description,
-        priority,
-        deadline: deadline || null,
-        assigned_to: selectedEmployee,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        deadline: data.deadline || null,
+        assigned_to: data.selectedEmployee,
         created_by: adminId,
         status: "invited",
       });
@@ -155,12 +201,7 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
       if (error) throw error;
 
       toast.success("Task assigned successfully!");
-      setTitle("");
-      setDescription("");
-      setPriority("medium");
-      setDeadline("");
-      setRequiredSkills("");
-      setSelectedEmployee("");
+      form.reset();
       setShowRecommendations(false);
       onClose();
     } catch (error) {
@@ -186,90 +227,141 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
                 <CardContent className="pt-6 space-y-4">
                   <h3 className="font-semibold text-lg">Task Details</h3>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Task Title *</Label>
-                    <Input
-                      id="title"
-                      placeholder="Enter task title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description *</Label>
-                    <Textarea
-                      id="description"
-                      placeholder="Describe the task in detail..."
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="skills">Required Skills (comma-separated)</Label>
-                    <Input
-                      id="skills"
-                      placeholder="e.g., React, Node.js, PostgreSQL"
-                      value={requiredSkills}
-                      onChange={(e) => {
-                        setRequiredSkills(e.target.value);
-                        if (e.target.value.trim()) {
-                          setShowRecommendations(true);
-                        }
-                      }}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Enter skills to get AI-powered employee recommendations
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="priority">Priority</Label>
-                      <Select value={priority} onValueChange={setPriority}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="deadline">Deadline</Label>
-                      <Input
-                        id="deadline"
-                        type="date"
-                        value={deadline}
-                        onChange={(e) => setDeadline(e.target.value)}
-                        min={new Date().toISOString().split('T')[0]}
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Task Title *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter task title"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
-                    </div>
-                  </div>
 
-                  <Separator />
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description *</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Describe the task in detail..."
+                                {...field}
+                                rows={4}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="employee">Assign To *</Label>
-                    <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an employee" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {employees.map((emp) => (
-                          <SelectItem key={emp.user_id} value={emp.user_id}>
-                            {emp.profiles?.full_name || "Unknown"}
-                            {emp.current_workload > 0 && ` (${emp.current_workload} tasks)`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <FormField
+                        control={form.control}
+                        name="requiredSkills"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Required Skills (comma-separated)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., React, Node.js, PostgreSQL"
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  if (e.target.value.trim()) {
+                                    setShowRecommendations(true);
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-muted-foreground">
+                              Enter skills to get AI-powered employee recommendations
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="priority"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Priority</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="deadline"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Deadline</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  min={new Date().toISOString().split('T')[0]}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <Separator />
+
+                      <FormField
+                        control={form.control}
+                        name="selectedEmployee"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Assign To *</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select an employee" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {employees.map((emp) => (
+                                  <SelectItem key={emp.user_id} value={emp.user_id}>
+                                    {emp.profiles?.full_name || "Unknown"}
+                                    {emp.current_workload > 0 && ` (${emp.current_workload} tasks)`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
                 </CardContent>
               </Card>
             </div>
@@ -283,7 +375,7 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
                     <h3 className="font-semibold text-lg">AI Recommendations</h3>
                   </div>
 
-                  {!showRecommendations || !requiredSkills.trim() ? (
+                  {!showRecommendations || !form.watch("requiredSkills").trim() ? (
                     <div className="text-center py-8 text-muted-foreground">
                       <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
                       <p className="text-sm">Enter required skills to see employee recommendations</p>
@@ -294,11 +386,11 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
                         {topRecommendations.map((emp, index) => (
                           <Card
                             key={emp.user_id}
-                            className={`cursor-pointer transition-all ${selectedEmployee === emp.user_id
-                                ? 'ring-2 ring-primary bg-primary/5'
-                                : 'hover:shadow-md'
+                            className={`cursor-pointer transition-all ${form.watch("selectedEmployee") === emp.user_id
+                              ? 'ring-2 ring-primary bg-primary/5'
+                              : 'hover:shadow-md'
                               } ${index === 0 ? 'border-yellow-300' : ''}`}
-                            onClick={() => setSelectedEmployee(emp.user_id)}
+                            onClick={() => form.setValue("selectedEmployee", emp.user_id)}
                           >
                             <CardContent className="pt-4">
                               <div className="flex items-start justify-between mb-3">
@@ -395,7 +487,11 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
         {/* Footer Actions */}
         <div className="flex gap-2 pt-4 border-t">
-          <Button onClick={handleSubmit} disabled={loading || !selectedEmployee} className="flex-1">
+          <Button
+            onClick={form.handleSubmit(handleSubmit)}
+            disabled={loading || !form.watch("selectedEmployee")}
+            className="flex-1"
+          >
             {loading ? "Assigning..." : "Assign Task"}
           </Button>
           <Button variant="outline" onClick={onClose} disabled={loading}>

@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Clock, Filter, ArrowUpDown, AlertCircle } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Filter, ArrowUpDown, AlertCircle, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -13,6 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import TaskDialog from "./TaskDialog";
+import TaskAssignmentDialog from "./TaskAssignmentDialog";
+import ErrorBoundary from "@/components/ui/error-boundary";
+import { useAuthStore } from "@/stores/authStore";
+import { useTaskStore } from "@/stores/taskStore";
+import { useUIStore } from "@/stores/uiStore";
 
 interface Task {
   id: string;
@@ -30,108 +36,51 @@ interface Task {
 }
 
 interface TaskListProps {
-  userId: string;
   isAdmin: boolean;
   searchQuery?: string;
 }
 
-const TaskList = ({ userId, isAdmin, searchQuery = "" }: TaskListProps) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("created_at");
+const TaskList = ({ isAdmin, searchQuery = "" }: TaskListProps) => {
+  const { user } = useAuthStore();
+  const {
+    tasks,
+    loading,
+    error,
+    loadTasks,
+    subscribeToTaskUpdates,
+    getFilteredTasks
+  } = useTaskStore();
+  const { selectedTask, setSelectedTask } = useTaskStore();
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [showTaskAssignment, setShowTaskAssignment] = useState(false);
 
-  const loadTasks = useCallback(async () => {
-    let query = supabase
-      .from("tasks")
-      .select("*");
+  const { statusFilter, priorityFilter, sortBy, setStatusFilter, setPriorityFilter, setSortBy } = useUIStore();
 
-    if (!isAdmin) {
-      query = query.eq("assigned_to", userId);
-    }
+  // Get filtered tasks from store
+  const filteredTasks = getFilteredTasks({
+    searchQuery,
+    statusFilter,
+    priorityFilter,
+    sortBy
+  });
 
-    const { data: tasksData, error } = await query;
-
-    if (error) {
-      toast.error("Failed to load tasks");
-      return;
-    }
-
-    // Get assigned user profiles
-    const assignedIds = tasksData?.filter(t => t.assigned_to).map(t => t.assigned_to) || [];
-
-    if (assignedIds.length > 0) {
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", assignedIds);
-
-      const merged = tasksData?.map(task => ({
-        ...task,
-        profiles: task.assigned_to ? profileData?.find(p => p.id === task.assigned_to) || null : null
-      })) || [];
-
-      setTasks(merged);
-    } else {
-      const merged = tasksData?.map(task => ({ ...task, profiles: null })) || [];
-      setTasks(merged);
-    }
-  }, [userId, isAdmin]);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredTasks.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 180,
+    overscan: 3,
+  });
 
   useEffect(() => {
-    loadTasks();
-
-    const channel = supabase
-      .channel("tasks")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-        },
-        () => {
-          loadTasks();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [loadTasks]);
-
-  const handleAcceptTask = async (taskId: string) => {
-    const { error } = await supabase
-      .from("tasks")
-      .update({
-        status: "accepted",
-        accepted_at: new Date().toISOString()
-      })
-      .eq("id", taskId);
-
-    if (error) {
-      toast.error("Failed to accept task");
-    } else {
-      toast.success("Task accepted!");
-      loadTasks();
+    if (user?.id) {
+      loadTasks(user.id, isAdmin);
+      const unsubscribe = subscribeToTaskUpdates(user.id, isAdmin);
+      return unsubscribe;
     }
-  };
+  }, [user?.id, isAdmin, loadTasks, subscribeToTaskUpdates]);
 
-  const handleRejectTask = async (taskId: string) => {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ status: "rejected" })
-      .eq("id", taskId);
 
-    if (error) {
-      toast.error("Failed to reject task");
-    } else {
-      toast.success("Task rejected");
-      loadTasks();
-    }
-  };
+  const { acceptTask, rejectTask } = useTaskStore();
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -173,216 +122,196 @@ const TaskList = ({ userId, isAdmin, searchQuery = "" }: TaskListProps) => {
     return { text: `${daysUntil} days left`, color: "text-muted-foreground" };
   };
 
-  // Apply filters and search
-  let filteredTasks = tasks.filter((task) => {
-    // Search filter
-    const matchesSearch = !searchQuery ||
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.profiles?.full_name.toLowerCase().includes(searchQuery.toLowerCase());
-
-    // Status filter
-    const matchesStatus = statusFilter === "all" || task.status === statusFilter;
-
-    // Priority filter
-    const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
-
-    return matchesSearch && matchesStatus && matchesPriority;
-  });
-
-  // Apply sorting
-  filteredTasks = filteredTasks.sort((a, b) => {
-    switch (sortBy) {
-      case "deadline": {
-        if (!a.deadline) return 1;
-        if (!b.deadline) return -1;
-        return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
-      }
-      case "priority": {
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        return (priorityOrder[a.priority as keyof typeof priorityOrder] || 3) -
-          (priorityOrder[b.priority as keyof typeof priorityOrder] || 3);
-      }
-      case "progress":
-        return b.progress - a.progress;
-      case "created_at":
-      default:
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    }
-  });
 
   return (
-    <div className="space-y-4">
-      {/* Filter and Sort Controls */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="h-5 w-5" />
-                Filters & Sorting
-              </CardTitle>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              Showing {filteredTasks.length} of {tasks.length} tasks
-            </div>
+    <ErrorBoundary componentName="TaskList">
+      <div className="space-y-4">
+        {/* Header with Add Button and Compact Filters */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold">Projects & Tasks</h2>
+            <Badge variant="secondary" className="text-sm">
+              {filteredTasks.length} / {tasks.length}
+            </Badge>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status</label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="invited">Invited</SelectItem>
-                  <SelectItem value="accepted">Accepted</SelectItem>
-                  <SelectItem value="ongoing">Ongoing</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          {isAdmin && (
+            <Button onClick={() => setShowTaskAssignment(true)} size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              New Task
+            </Button>
+          )}
+        </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Priority</label>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Filter by priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Compact Filter Bar */}
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-muted/50 rounded-lg border">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="invited">Invited</SelectItem>
+              <SelectItem value="accepted">Accepted</SelectItem>
+              <SelectItem value="ongoing">Ongoing</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
+            </SelectContent>
+          </Select>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium flex items-center gap-1">
-                <ArrowUpDown className="h-4 w-4" />
-                Sort By
-              </label>
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sort tasks" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="created_at">Newest First</SelectItem>
-                  <SelectItem value="deadline">Deadline</SelectItem>
-                  <SelectItem value="priority">Priority</SelectItem>
-                  <SelectItem value="progress">Progress</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+            <SelectTrigger className="w-[140px] h-8 text-xs">
+              <SelectValue placeholder="Priority" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Priority</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <div className="flex items-center gap-1">
+            <ArrowUpDown className="h-3 w-3 text-muted-foreground" />
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="w-[140px] h-8 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="created_at">Newest</SelectItem>
+                <SelectItem value="deadline">Deadline</SelectItem>
+                <SelectItem value="priority">Priority</SelectItem>
+                <SelectItem value="progress">Progress</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Task List */}
-      {filteredTasks.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">No tasks match your filters</p>
-          </CardContent>
-        </Card>
-      ) : (
-        filteredTasks.map((task) => (
-          <Card key={task.id} className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => setSelectedTask(task)}>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{task.title}</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {task.description}
-                  </p>
-                </div>
-                {getStatusBadge(task.status)}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {task.profiles && (
-                <p className="text-sm">
-                  <span className="text-muted-foreground">Assigned to:</span>{" "}
-                  {task.profiles.full_name}
-                </p>
-              )}
-
-              <div className="flex items-center gap-4 text-sm flex-wrap">
-                {getPriorityBadge(task.priority)}
-                {task.deadline && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    <span>{new Date(task.deadline).toLocaleDateString()}</span>
-                    {getDeadlineStatus(task.deadline) && (
-                      <span className={`ml-1 font-medium ${getDeadlineStatus(task.deadline)!.color}`}>
-                        ({getDeadlineStatus(task.deadline)!.text})
-                      </span>
-                    )}
-                  </div>
+        {/* Task Cards Grid */}
+        <div
+          ref={parentRef}
+          className="h-[calc(100vh-280px)] overflow-auto"
+          aria-label="Task list"
+        >
+          {filteredTasks.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center">
+                <p className="text-muted-foreground mb-4">No tasks match your filters</p>
+                {isAdmin && (
+                  <Button onClick={() => setShowTaskAssignment(true)} variant="outline" size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Your First Task
+                  </Button>
                 )}
-              </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 p-1">
+              {filteredTasks.map((task) => (
+                <Card
+                  key={task.id}
+                  className="cursor-pointer hover:shadow-md transition-all hover:border-primary/50 flex flex-col h-fit"
+                  onClick={() => setSelectedTask(task)}
+                >
+                  <CardHeader className="p-4 pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <CardTitle className="text-base line-clamp-2 flex-1">{task.title}</CardTitle>
+                      {getStatusBadge(task.status)}
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1.5">
+                      {task.description}
+                    </p>
+                  </CardHeader>
+                  <CardContent className="p-4 pt-0 space-y-3 flex-1 flex flex-col">
+                    {task.profiles && (
+                      <p className="text-xs">
+                        <span className="text-muted-foreground">Assigned:</span>{" "}
+                        <span className="font-medium">{task.profiles.full_name}</span>
+                      </p>
+                    )}
 
-              <div>
-                <div className="flex items-center justify-between text-sm mb-1">
-                  <span className="text-muted-foreground">Progress</span>
-                  <span className="font-medium">{task.progress}%</span>
-                </div>
-                <div className="w-full bg-secondary rounded-full h-2">
-                  <div
-                    className="bg-primary h-2 rounded-full transition-all"
-                    style={{ width: `${task.progress}%` }}
-                  />
-                </div>
-              </div>
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      {getPriorityBadge(task.priority)}
+                      {task.deadline && (
+                        <div className="flex items-center gap-1 text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          <span>{new Date(task.deadline).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </div>
 
-              {!isAdmin && task.status === "invited" && (
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAcceptTask(task.id);
-                    }}
-                    className="flex-1"
-                  >
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Accept
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRejectTask(task.id);
-                    }}
-                    className="flex-1"
-                  >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        ))
-      )}
+                    {task.deadline && getDeadlineStatus(task.deadline) && (
+                      <div className={`text-xs font-medium ${getDeadlineStatus(task.deadline)!.color}`}>
+                        {getDeadlineStatus(task.deadline)!.text}
+                      </div>
+                    )}
 
-      {selectedTask && (
-        <TaskDialog
-          task={selectedTask}
-          open={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
-          userId={userId}
-          isAdmin={isAdmin}
-        />
-      )}
-    </div>
+                    <div className="mt-auto">
+                      <div className="flex items-center justify-between text-xs mb-1.5">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span className="font-semibold">{task.progress}%</span>
+                      </div>
+                      <div className="w-full bg-secondary rounded-full h-1.5">
+                        <div
+                          className="bg-primary h-1.5 rounded-full transition-all"
+                          style={{ width: `${task.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {!isAdmin && task.status === "invited" && (
+                      <div className="flex gap-2 pt-2">
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            acceptTask(task.id);
+                          }}
+                          className="flex-1 h-8 text-xs"
+                        >
+                          <CheckCircle className="mr-1.5 h-3 w-3" />
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            rejectTask(task.id);
+                          }}
+                          className="flex-1 h-8 text-xs"
+                        >
+                          <XCircle className="mr-1.5 h-3 w-3" />
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {selectedTask && (
+          <TaskDialog
+            task={selectedTask}
+            open={!!selectedTask}
+            onClose={() => setSelectedTask(null)}
+            isAdmin={isAdmin}
+            userId={user?.id || ''}
+          />
+        )}
+
+        {isAdmin && (
+          <TaskAssignmentDialog
+            open={showTaskAssignment}
+            onClose={() => setShowTaskAssignment(false)}
+            adminId={user?.id || ''}
+          />
+        )}
+      </div>
+    </ErrorBoundary>
   );
 };
 

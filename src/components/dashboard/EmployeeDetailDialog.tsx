@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -10,6 +12,21 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Pencil, Save, X } from "lucide-react";
+import { employeeProfileSchema, type EmployeeProfileFormData } from "@/lib/validation";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import ErrorBoundary from "@/components/ui/error-boundary";
 
 interface EmployeeDetailDialogProps {
   employee: any;
@@ -19,12 +36,30 @@ interface EmployeeDetailDialogProps {
 
 const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogProps) => {
   const [tasks, setTasks] = useState<any[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const form = useForm<EmployeeProfileFormData>({
+    resolver: zodResolver(employeeProfileSchema),
+    defaultValues: {
+      department: employee?.department || "",
+      designation: employee?.designation || "",
+      hourlyRate: employee?.hourly_rate || 0,
+      skills: employee?.skills || [],
+    },
+  });
 
   useEffect(() => {
     if (open && employee) {
       loadEmployeeTasks();
+      form.reset({
+        department: employee.department || "",
+        designation: employee.designation || "",
+        hourlyRate: employee.hourly_rate || 0,
+        skills: employee.skills || [],
+      });
     }
-  }, [open, employee]);
+  }, [open, employee, form]);
 
   const loadEmployeeTasks = async () => {
     const { data } = await supabase
@@ -36,6 +71,41 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
     setTasks(data || []);
   };
 
+  const handleSaveProfile = async (data: EmployeeProfileFormData) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("employee_profiles")
+        .update({
+          department: data.department,
+          designation: data.designation,
+          hourly_rate: data.hourlyRate,
+          skills: data.skills,
+        })
+        .eq("user_id", employee.user_id);
+
+      if (error) throw error;
+
+      toast.success("Employee profile updated successfully");
+      setIsEditing(false);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to update profile";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    form.reset({
+      department: employee.department || "",
+      designation: employee.designation || "",
+      hourlyRate: employee.hourly_rate || 0,
+      skills: employee.skills || [],
+    });
+    setIsEditing(false);
+  };
+
   if (!employee) return null;
 
   const completionRate = tasks.length > 0
@@ -43,10 +113,30 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
     : 0;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[80vh]">
+    <ErrorBoundary componentName="EmployeeDetailDialog">
+      <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent
+        className="max-w-3xl max-h-[80vh]"
+        onOpenAutoFocus={(e) => {
+          // Prevent auto-focus on first element, let user navigate naturally
+          e.preventDefault();
+        }}
+      >
         <DialogHeader>
-          <DialogTitle>Employee Details</DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle>Employee Details</DialogTitle>
+            {!isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-2"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            )}
+          </div>
         </DialogHeader>
 
         <ScrollArea className="h-[60vh]">
@@ -57,47 +147,133 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
                 <CardTitle>{employee.profiles.full_name}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Email</p>
-                    <p className="font-medium">{employee.profiles.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Status</p>
-                    <Badge variant={employee.availability ? "default" : "secondary"}>
-                      {employee.availability ? "Available" : "Unavailable"}
-                    </Badge>
-                  </div>
-                </div>
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(handleSaveProfile)} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Email</p>
+                        <p className="font-medium">{employee.profiles.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <Badge variant={employee.availability ? "default" : "secondary"}>
+                          {employee.availability ? "Available" : "Unavailable"}
+                        </Badge>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Department</p>
-                    <p className="font-medium">{employee.department || "Not assigned"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Designation</p>
-                    <p className="font-medium">{employee.designation || "Not assigned"}</p>
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="department"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Department</FormLabel>
+                            {isEditing ? (
+                              <FormControl>
+                                <Input {...field} placeholder="Enter department" />
+                              </FormControl>
+                            ) : (
+                              <p className="font-medium">{field.value || "Not assigned"}</p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="designation"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Designation</FormLabel>
+                            {isEditing ? (
+                              <FormControl>
+                                <Input {...field} placeholder="Enter designation" />
+                              </FormControl>
+                            ) : (
+                              <p className="font-medium">{field.value || "Not assigned"}</p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
-                {employee.hourly_rate && (
-                  <div>
-                    <p className="text-sm text-muted-foreground">Hourly Rate</p>
-                    <p className="text-xl font-bold">${employee.hourly_rate}/hr</p>
-                  </div>
-                )}
+                    <FormField
+                      control={form.control}
+                      name="hourlyRate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Hourly Rate</FormLabel>
+                          {isEditing ? (
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                {...field}
+                                onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : 0)}
+                              />
+                            </FormControl>
+                          ) : (
+                            <p className="text-xl font-bold">${field.value || 0}/hr</p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <div>
-                  <p className="text-sm text-muted-foreground mb-2">Skills</p>
-                  <div className="flex flex-wrap gap-2">
-                    {employee.skills.map((skill: string, idx: number) => (
-                      <Badge key={idx} variant="secondary">
-                        {skill}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                    <FormField
+                      control={form.control}
+                      name="skills"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Skills</FormLabel>
+                          {isEditing ? (
+                            <FormControl>
+                              <Input
+                                placeholder="Enter skills (comma-separated)"
+                                value={field.value.join(", ")}
+                                onChange={(e) => field.onChange(e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                              />
+                            </FormControl>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {field.value.map((skill: string, idx: number) => (
+                                <Badge key={idx} variant="secondary">
+                                  {skill}
+                                </Badge>
+                              ))}
+                              {field.value.length === 0 && (
+                                <p className="text-muted-foreground">No skills assigned</p>
+                              )}
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {isEditing && (
+                      <div className="flex gap-2 pt-4">
+                        <Button type="submit" disabled={loading} className="flex-1">
+                          <Save className="h-4 w-4 mr-2" />
+                          {loading ? "Saving..." : "Save Changes"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleCancelEdit}
+                          disabled={loading}
+                        >
+                          <X className="h-4 w-4 mr-2" />
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </form>
+                </Form>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -168,7 +344,8 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
           </div>
         </ScrollArea>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </ErrorBoundary>
   );
 };
 
