@@ -308,6 +308,7 @@ const TaskList = ({ isAdmin, searchQuery = "" }: TaskListProps) => {
             open={showTaskAssignment}
             onClose={() => setShowTaskAssignment(false)}
             adminId={user?.id || ''}
+            onSuccess={() => loadTasks(user?.id || '', isAdmin)}
           />
         )}
       </div>

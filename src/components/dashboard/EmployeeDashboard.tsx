@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, ListTodo, Inbox, Home, UserCircle } from "lucide-react";
+import { LogOut, ListTodo, Inbox, Home, UserCircle, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import TaskList from "./TaskList";
@@ -9,6 +9,7 @@ import EmployeeInbox from "./EmployeeInbox";
 import EmployeeDashboardSummary from "./EmployeeDashboardSummary";
 import EmployeeOnboarding from "@/components/onboarding/EmployeeOnboarding";
 import Profile from "@/components/profile/Profile";
+import Chat from "./Chat";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -89,14 +90,18 @@ const EmployeeDashboard = () => {
             break;
           case '1':
             e.preventDefault();
-            setActiveView("inbox");
-            markAllAsRead();
+            setActiveView("chat");
             break;
           case '2':
             e.preventDefault();
-            setActiveView("tasks");
+            setActiveView("inbox");
+            markAllAsRead();
             break;
           case '3':
+            e.preventDefault();
+            setActiveView("tasks");
+            break;
+          case '4':
             e.preventDefault();
             setActiveView("profile");
             break;
@@ -154,6 +159,15 @@ const EmployeeDashboard = () => {
           >
             <Home className="mr-2 h-4 w-4" aria-hidden="true" />
             Overview
+          </Button>
+          <Button
+            variant={activeView === "chat" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("chat")}
+            aria-current={activeView === "chat" ? "page" : undefined}
+          >
+            <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+            AI Assistant
           </Button>
           <Button
             variant={activeView === "inbox" ? "default" : "ghost"}
@@ -226,7 +240,7 @@ const EmployeeDashboard = () => {
           </Button>
         </div>
 
-        <div className="p-4 md:p-6 flex-1 overflow-y-auto">
+        <div className={`${activeView === "chat" ? "flex-1" : "p-4 md:p-6"} ${activeView !== "chat" ? "overflow-y-auto" : ""}`}>
           {activeView === "overview" && (
             <ErrorBoundary componentName="EmployeeDashboardSummary">
               <EmployeeDashboardSummary
@@ -234,6 +248,11 @@ const EmployeeDashboard = () => {
                 userId={user.id}
                 onNavigate={setActiveView}
               />
+            </ErrorBoundary>
+          )}
+          {activeView === "chat" && (
+            <ErrorBoundary componentName="Chat">
+              <Chat userRole="employee" />
             </ErrorBoundary>
           )}
           {activeView === "inbox" && (

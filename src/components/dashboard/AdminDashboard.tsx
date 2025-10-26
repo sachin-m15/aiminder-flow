@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LogOut, Users, ListTodo, BarChart3, Settings, Search, DollarSign, UserCircle } from "lucide-react";
+import { LogOut, Users, ListTodo, BarChart3, Settings, Search, DollarSign, UserCircle, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import TaskList from "./TaskList";
 import DashboardSummary from "./DashboardSummary";
 import PaymentManagement from "./PaymentManagement";
 import Profile from "@/components/profile/Profile";
+import Chat from "./Chat";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -112,6 +113,15 @@ const AdminDashboard = () => {
           >
             <BarChart3 className="mr-2 h-4 w-4" aria-hidden="true" />
             Dashboard
+          </Button>
+          <Button
+            variant={activeView === "chat" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("chat")}
+            aria-current={activeView === "chat" ? "page" : undefined}
+          >
+            <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+            AI Assistant
           </Button>
           <Button
             variant={activeView === "employees" ? "default" : "ghost"}
@@ -222,10 +232,15 @@ const AdminDashboard = () => {
           </header>
         )}
 
-        <div className={`${activeView === "chat" ? "flex-1" : "p-4 md:p-6"} space-y-4 md:space-y-6 flex-1 overflow-y-auto`}>
+        <div className={`${activeView === "chat" ? "flex-1 p-4 md:p-6" : "p-4 md:p-6"} space-y-4 md:space-y-6 flex-1 overflow-y-auto`}>
           {activeView === "dashboard" && (
             <ErrorBoundary componentName="DashboardSummary">
               <DashboardSummary />
+            </ErrorBoundary>
+          )}
+          {activeView === "chat" && (
+            <ErrorBoundary componentName="Chat">
+              <Chat userRole="admin" />
             </ErrorBoundary>
           )}
           {activeView === "employees" && (

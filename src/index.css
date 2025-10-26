@@ -109,3 +109,42 @@ All colors MUST be HSL.
     @apply bg-background text-foreground;
   }
 }
+
+/* Chat markdown styles */
+@layer components {
+  .prose {
+    @apply text-foreground;
+  }
+  
+  .prose h1, .prose h2, .prose h3 {
+    @apply text-foreground font-semibold;
+  }
+  
+  .prose p {
+    @apply text-foreground;
+  }
+  
+  .prose ul, .prose ol {
+    @apply text-foreground;
+  }
+  
+  .prose li {
+    @apply text-foreground;
+  }
+  
+  .prose strong {
+    @apply font-bold text-foreground;
+  }
+  
+  .prose code {
+    @apply text-foreground;
+  }
+  
+  .prose a {
+    @apply text-primary hover:underline;
+  }
+  
+  .prose-sm {
+    @apply text-sm;
+  }
+}

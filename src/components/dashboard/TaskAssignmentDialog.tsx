@@ -33,6 +33,7 @@ interface TaskAssignmentDialogProps {
   open: boolean;
   onClose: () => void;
   adminId: string;
+  onSuccess?: () => void;
 }
 
 interface Employee {
@@ -54,7 +55,7 @@ interface EmployeeWithScore extends Employee {
   workloadCapacity: number;
 }
 
-const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogProps) => {
+const TaskAssignmentDialog = ({ open, onClose, adminId, onSuccess }: TaskAssignmentDialogProps) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
   const [showRecommendations, setShowRecommendations] = useState(false);
@@ -280,6 +281,7 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
       toast.success("Task assigned successfully!");
       form.reset();
       setShowRecommendations(false);
+      onSuccess?.(); // Trigger refresh
       onClose();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to assign task";

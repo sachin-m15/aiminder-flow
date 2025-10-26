@@ -116,7 +116,10 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
   const loadTaskUpdates = async () => {
     setLoadingUpdates(true);
     try {
-      const { data, error } = await supabase
+      console.log("Loading task updates for task ID:", task.id);
+
+      // First, get the task updates
+      const { data: updatesData, error: updatesError } = await supabase
         .from("task_updates")
         .select(`
           id,
@@ -124,18 +127,40 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
           progress,
           hours_logged,
           created_at,
-          user_id,
-          profiles!task_updates_user_id_fkey (
-            full_name
-          )
+          user_id
         `)
         .eq("task_id", task.id)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setTaskUpdates((data as unknown as TaskUpdate[]) || []);
+      if (updatesError) {
+        console.error("Error loading task updates:", updatesError);
+        throw updatesError;
+      }
+
+      // Get unique user IDs
+      const userIds = [...new Set(updatesData?.map(u => u.user_id) || [])];
+
+      // Fetch profiles for those users
+      const { data: profilesData, error: profilesError } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", userIds);
+
+      if (profilesError) {
+        console.error("Error loading profiles:", profilesError);
+        throw profilesError;
+      }
+
+      // Merge the data
+      const updatesWithProfiles = updatesData?.map(update => ({
+        ...update,
+        profiles: profilesData?.find(p => p.id === update.user_id) || null,
+      })) || [];
+
+      console.log("Loaded task updates:", updatesWithProfiles);
+      setTaskUpdates(updatesWithProfiles as TaskUpdate[]);
     } catch (error) {
-      console.error("Error loading task updates:", error);
+      console.error("Error in loadTaskUpdates:", error);
     } finally {
       setLoadingUpdates(false);
     }
@@ -157,28 +182,42 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
         .update({ progress: data.progress, status: data.progress === 100 ? "completed" : "ongoing" })
         .eq("id", task.id);
 
-      if (taskError) throw taskError;
-
-      // Add update entry
-      if (data.updateText?.trim() || (data.hoursLogged && data.hoursLogged > 0)) {
-        const { error: updateError } = await supabase
-          .from("task_updates")
-          .insert({
-            task_id: task.id,
-            user_id: userId,
-            update_text: data.updateText || `Progress updated to ${data.progress}%`,
-            progress: data.progress,
-            hours_logged: data.hoursLogged > 0 ? data.hoursLogged : null,
-          });
-
-        if (updateError) throw updateError;
+      if (taskError) {
+        console.error("Error updating task progress:", taskError);
+        throw taskError;
       }
+
+      // Always add update entry when progress changes
+      const updatePayload = {
+        task_id: task.id,
+        user_id: userId,
+        update_text: data.updateText?.trim() || `Progress updated to ${data.progress}%`,
+        progress: data.progress,
+        hours_logged: data.hoursLogged && data.hoursLogged > 0 ? data.hoursLogged : null,
+      };
+
+      console.log("Inserting task update:", updatePayload);
+
+      const { data: insertedUpdate, error: updateError } = await supabase
+        .from("task_updates")
+        .insert(updatePayload)
+        .select();
+
+      if (updateError) {
+        console.error("Error inserting task update:", updateError);
+        throw updateError;
+      }
+
+      console.log("Task update inserted successfully:", insertedUpdate);
 
       toast.success("Task updated successfully");
       form.reset();
-      loadTaskUpdates();
+
+      // Reload updates before closing
+      await loadTaskUpdates();
       onClose();
     } catch (error) {
+      console.error("Error in handleUpdateProgress:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to update task";
       toast.error(errorMessage);
     } finally {
@@ -672,17 +711,6 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
                     </div>
                   )}
                 </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Task Chat */}
-            <Card>
-              <CardContent className="pt-6">
-                <Label className="text-lg font-semibold mb-4 block" id="task-chat-label">Task Discussion</Label>
-                {/* TODO: Implement ChatInterface component */}
-                <div className="text-sm text-muted-foreground p-4 bg-muted/50 rounded-md">
-                  Chat interface coming soon...
-                </div>
               </CardContent>
             </Card>
           </div>
