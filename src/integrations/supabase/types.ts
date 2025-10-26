@@ -237,6 +237,57 @@ export type Database = {
         }
         Relationships: []
       }
+      task_attachments: {
+        Row: {
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          mime_type: string
+          task_id: string
+          task_update_id: string
+          uploaded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          mime_type: string
+          task_id: string
+          task_update_id: string
+          uploaded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          task_id?: string
+          task_update_id?: string
+          uploaded_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_task_update_id_fkey"
+            columns: ["task_update_id"]
+            isOneToOne: false
+            referencedRelation: "task_updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_required_skills: {
         Row: {
           created_at: string | null
@@ -390,11 +441,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_orphaned_attachment_files: {
+        Args: never
+        Returns: {
+          deleted_path: string
+        }[]
+      }
       clear_consolidated_sample_data: { Args: never; Returns: string }
       get_employee_skills: { Args: { _employee_id: string }; Returns: string[] }
       get_task_required_skills: {
         Args: { _task_id: string }
         Returns: string[]
+      }
+      get_task_update_attachments_count: {
+        Args: { p_task_update_id: string }
+        Returns: number
+      }
+      get_task_update_attachments_size: {
+        Args: { p_task_update_id: string }
+        Returns: number
       }
       has_role: {
         Args: {

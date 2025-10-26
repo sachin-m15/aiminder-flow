@@ -20,7 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp, Edit2, X as XIcon, Save } from "lucide-react";
+import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp, Edit2, X as XIcon, Save, Upload, File, Download } from "lucide-react";
 // import ChatInterface from "./ChatInterface"; // TODO: Component not yet implemented
 import { taskProgressSchema, type TaskProgressFormData } from "@/lib/validation";
 import {
@@ -58,15 +58,26 @@ interface Task {
   };
 }
 
+interface TaskAttachment {
+  id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  uploaded_at: string;
+}
+
 interface TaskUpdate {
   id: string;
   update_text: string;
   progress: number;
   hours_logged: number | null;
   created_at: string;
+  user_id: string;
   profiles?: {
     full_name: string;
   } | null;
+  attachments?: TaskAttachment[];
 }
 
 interface TaskDialogProps {
@@ -82,6 +93,8 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
   const [taskUpdates, setTaskUpdates] = useState<TaskUpdate[]>([]);
   const [loadingUpdates, setLoadingUpdates] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
 
   const form = useForm<TaskProgressFormData>({
     resolver: zodResolver(taskProgressSchema),
@@ -112,6 +125,114 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
     });
     setIsEditing(false);
   }, [task, editForm]);
+
+  // File handling functions
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+
+    // Validate file size (10MB max per file)
+    const validFiles = files.filter(file => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`${file.name} exceeds 10MB limit`);
+        return false;
+      }
+      return true;
+    });
+
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+  };
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadAttachments = async (taskUpdateId: string) => {
+    if (selectedFiles.length === 0) return;
+
+    setUploadingFiles(true);
+    console.log(`Starting upload of ${selectedFiles.length} file(s) for task update ${taskUpdateId}`);
+
+    try {
+      const uploadPromises = selectedFiles.map(async (file, index) => {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const filePath = `${task.id}/${taskUpdateId}/${fileName}`;
+
+        console.log(`[File ${index + 1}] Uploading: ${file.name} (${file.size} bytes) to path: ${filePath}`);
+
+        // Upload to storage
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('task-attachments')
+          .upload(filePath, file);
+
+        if (uploadError) {
+          console.error(`[File ${index + 1}] Storage upload error:`, uploadError);
+          throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`);
+        }
+
+        console.log(`[File ${index + 1}] Storage upload successful:`, uploadData);
+
+        // Save metadata to database
+        const { data: dbData, error: dbError } = await supabase
+          .from('task_attachments')
+          .insert({
+            task_update_id: taskUpdateId,
+            task_id: task.id,
+            user_id: userId,
+            file_name: file.name,
+            file_path: filePath,
+            file_size: file.size,
+            mime_type: file.type,
+          })
+          .select();
+
+        if (dbError) {
+          console.error(`[File ${index + 1}] Database insert error:`, dbError);
+          throw new Error(`Failed to save ${file.name} metadata: ${dbError.message}`);
+        }
+
+        console.log(`[File ${index + 1}] Database insert successful:`, dbData);
+        return dbData;
+      });
+
+      const results = await Promise.all(uploadPromises);
+      console.log('All files uploaded successfully:', results);
+      toast.success(`${selectedFiles.length} file(s) uploaded successfully`);
+      setSelectedFiles([]);
+    } catch (error) {
+      console.error('Error uploading attachments:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload some files';
+      toast.error(errorMessage);
+      throw error; // Re-throw to be caught by handleUpdateProgress
+    } finally {
+      setUploadingFiles(false);
+    }
+  };
+
+  const downloadFile = async (filePath: string, fileName: string) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('task-attachments')
+        .download(filePath);
+
+      if (error) throw error;
+
+      // Create download link
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('File downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast.error('Failed to download file');
+    }
+  };
 
   const loadTaskUpdates = async () => {
     setLoadingUpdates(true);
@@ -151,13 +272,35 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
         throw profilesError;
       }
 
+      // Get update IDs
+      const updateIds = updatesData?.map(u => u.id) || [];
+      console.log("Update IDs:", updateIds);
+
+      // Fetch attachments for all updates
+      let attachmentsData = null;
+      if (updateIds.length > 0) {
+        const { data, error: attachmentsError } = await supabase
+          .from("task_attachments")
+          .select("*")
+          .in("task_update_id", updateIds)
+          .order("uploaded_at", { ascending: true });
+
+        if (attachmentsError) {
+          console.error("Error loading attachments:", attachmentsError);
+        } else {
+          attachmentsData = data;
+          console.log("Loaded attachments:", attachmentsData);
+        }
+      }
+
       // Merge the data
       const updatesWithProfiles = updatesData?.map(update => ({
         ...update,
         profiles: profilesData?.find(p => p.id === update.user_id) || null,
+        attachments: attachmentsData?.filter(a => a.task_update_id === update.id) || [],
       })) || [];
 
-      console.log("Loaded task updates:", updatesWithProfiles);
+      console.log("Loaded task updates with attachments:", updatesWithProfiles);
       setTaskUpdates(updatesWithProfiles as TaskUpdate[]);
     } catch (error) {
       console.error("Error in loadTaskUpdates:", error);
@@ -201,7 +344,8 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
       const { data: insertedUpdate, error: updateError } = await supabase
         .from("task_updates")
         .insert(updatePayload)
-        .select();
+        .select()
+        .single();
 
       if (updateError) {
         console.error("Error inserting task update:", updateError);
@@ -209,6 +353,11 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
       }
 
       console.log("Task update inserted successfully:", insertedUpdate);
+
+      // Upload attachments if any files were selected
+      if (insertedUpdate && selectedFiles.length > 0) {
+        await uploadAttachments(insertedUpdate.id);
+      }
 
       toast.success("Task updated successfully");
       form.reset();
@@ -655,14 +804,73 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
                           )}
                         />
 
+                        {/* File Upload Section */}
+                        <div className="space-y-2">
+                          <Label htmlFor="file-upload">Attach Files (Optional)</Label>
+                          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 hover:border-muted-foreground/50 transition-colors">
+                            <Input
+                              id="file-upload"
+                              type="file"
+                              multiple
+                              onChange={handleFileSelect}
+                              className="hidden"
+                              accept=".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                            />
+                            <label
+                              htmlFor="file-upload"
+                              className="flex flex-col items-center justify-center cursor-pointer"
+                            >
+                              <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                              <span className="text-sm text-muted-foreground text-center">
+                                Click to upload files (Max 10MB each)
+                              </span>
+                              <span className="text-xs text-muted-foreground mt-1">
+                                PDF, Images, Documents, etc.
+                              </span>
+                            </label>
+                          </div>
+
+                          {/* Selected Files List */}
+                          {selectedFiles.length > 0 && (
+                            <div className="space-y-2">
+                              <p className="text-xs text-muted-foreground">
+                                {selectedFiles.length} file(s) selected
+                              </p>
+                              {selectedFiles.map((file, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center justify-between bg-muted p-2 rounded-md"
+                                >
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <File className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                                    <span className="text-sm truncate">{file.name}</span>
+                                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                                      ({(file.size / 1024).toFixed(1)} KB)
+                                    </span>
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeFile(index)}
+                                    className="flex-shrink-0"
+                                  >
+                                    <XIcon className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                         <Button
                           type="submit"
-                          disabled={loading}
+                          disabled={loading || uploadingFiles}
                           className="w-full"
                           aria-busy={loading}
                         >
                           <Send className="mr-2 h-4 w-4" aria-hidden="true" />
-                          {loading ? "Submitting..." : "Submit Update"}
+                          {loading ? "Submitting..." : uploadingFiles ? "Uploading files..." : "Submit Update"}
                         </Button>
                       </form>
                     </Form>
@@ -705,7 +913,44 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
                               )}
                             </div>
                           </div>
-                          <p className="text-sm" aria-label="Update details">{update.update_text}</p>
+                          <p className="text-sm mb-2" aria-label="Update details">{update.update_text}</p>
+
+                          {/* Attachments Section */}
+                          {update.attachments && update.attachments.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                                <File className="h-3 w-3" />
+                                Attachments ({update.attachments.length})
+                              </Label>
+                              <div className="space-y-1">
+                                {update.attachments.map((attachment) => (
+                                  <div
+                                    key={attachment.id}
+                                    className="flex items-center justify-between bg-muted/50 p-2 rounded-md group hover:bg-muted transition-colors"
+                                  >
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                      <File className="h-3 w-3 flex-shrink-0 text-muted-foreground" />
+                                      <span className="text-xs truncate font-medium">
+                                        {attachment.file_name}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                                        ({(attachment.file_size / 1024).toFixed(1)} KB)
+                                      </span>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => downloadFile(attachment.file_path, attachment.file_name)}
+                                      className="h-7 w-7 p-0"
+                                      title="Download file"
+                                    >
+                                      <Download className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
