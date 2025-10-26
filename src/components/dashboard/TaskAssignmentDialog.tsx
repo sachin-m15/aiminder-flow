@@ -42,6 +42,7 @@ interface Employee {
   designation: string | null;
   performance_score: number;
   current_workload: number;
+  availability: boolean;
   profiles: {
     full_name: string;
   } | null;
@@ -78,10 +79,10 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
   const loadEmployees = async () => {
     try {
-      // First, get employee profiles (without skills column)
+      // First, get employee profiles (including availability)
       const { data: employeeData, error: empError } = await supabase
         .from("employee_profiles")
-        .select("id, user_id, department, designation, performance_score, current_workload");
+        .select("id, user_id, department, designation, performance_score, current_workload, availability");
 
       if (empError) throw empError;
 
@@ -110,6 +111,22 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
       if (profilesError) throw profilesError;
 
+      // Fetch actual task counts for each employee
+      const { data: tasksData, error: tasksError } = await supabase
+        .from("tasks")
+        .select("assigned_to")
+        .in("assigned_to", userIds)
+        .in("status", ["ongoing", "accepted"]);
+
+      if (tasksError) throw tasksError;
+
+      // Count tasks per employee
+      const taskCounts = new Map<string, number>();
+      tasksData?.forEach(task => {
+        const count = taskCounts.get(task.assigned_to) || 0;
+        taskCounts.set(task.assigned_to, count + 1);
+      });
+
       // Merge the data
       const employeesWithProfiles = employeeData.map(emp => {
         const empSkills = skillsData?.filter(s => s.employee_id === emp.id).map(s => s.skill) || [];
@@ -118,7 +135,8 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
           department: emp.department,
           designation: emp.designation,
           performance_score: emp.performance_score,
-          current_workload: emp.current_workload,
+          current_workload: taskCounts.get(emp.user_id) || 0, // Use actual task count
+          availability: emp.availability,
           skills: empSkills,
           profiles: profilesData?.find(p => p.id === emp.user_id) || null
         };
@@ -131,8 +149,9 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
     }
   };
 
-  // Watch required skills for AI recommendations
+  // Watch required skills and priority for AI recommendations
   const requiredSkills = form.watch("requiredSkills") || "";
+  const taskPriority = form.watch("priority") || "medium";
 
   // AI-powered employee scoring algorithm
   const rankedEmployees = useMemo((): EmployeeWithScore[] => {
@@ -147,32 +166,79 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
     const skillKeywords = requiredSkills.toLowerCase().split(',').map(s => s.trim());
 
+    // Priority urgency multiplier
+    const priorityUrgency = {
+      low: 0.8,
+      medium: 1.0,
+      high: 1.3
+    }[taskPriority] || 1.0;
+
     return employees.map(emp => {
-      // Skill Match Score (0-100)
+      // 1. SKILL MATCH SCORE (0-100) - Most important factor
       const employeeSkills = emp.skills.map(s => s.toLowerCase());
       const matchedSkills = skillKeywords.filter(keyword =>
         employeeSkills.some(empSkill => empSkill.includes(keyword) || keyword.includes(empSkill))
       );
       const skillMatch = skillKeywords.length > 0
         ? (matchedSkills.length / skillKeywords.length) * 100
-        : 50;
+        : 0;
 
-      // Workload Capacity (0-100) - Lower workload = Higher score
-      const maxWorkload = 10; // Assume max 10 tasks
-      const workloadCapacity = Math.max(0, ((maxWorkload - emp.current_workload) / maxWorkload) * 100);
+      // 2. AVAILABILITY SCORE (0-100) - Critical blocker
+      // If employee is not available, drastically reduce their score
+      const availabilityScore = emp.availability ? 100 : 10;
 
-      // Performance Score (already 0-100)
-      const performanceScore = emp.performance_score;
+      // 3. WORKLOAD CAPACITY (0-100) - Lower workload = Higher score
+      // Adjusted based on task priority - high priority tasks need employees with lower workload
+      const maxWorkload = 10;
+      let workloadCapacity = Math.max(0, ((maxWorkload - emp.current_workload) / maxWorkload) * 100);
 
-      // Availability Score (0-100) - Based on workload
-      const availabilityScore = emp.current_workload < 3 ? 100 : emp.current_workload < 5 ? 70 : 40;
+      // For high priority tasks, penalize high workload more heavily
+      if (taskPriority === 'high') {
+        if (emp.current_workload >= 5) {
+          workloadCapacity = workloadCapacity * 0.5; // 50% penalty for busy employees
+        }
+      }
 
-      // Weighted Score
-      const matchScore =
-        (skillMatch * 0.40) +
-        (workloadCapacity * 0.30) +
-        (performanceScore * 0.20) +
-        (availabilityScore * 0.10);
+      // 4. PERFORMANCE SCORE (0-100) - Track record matters
+      const performanceScore = emp.performance_score || 50;
+
+      // 5. CALCULATED WEIGHTED SCORE
+      // Weights adjusted based on task priority
+      let weights;
+      if (taskPriority === 'high') {
+        // For high priority: prioritize availability, workload, then skills
+        weights = {
+          skillMatch: 0.35,
+          availability: 0.30,
+          workloadCapacity: 0.25,
+          performance: 0.10
+        };
+      } else if (taskPriority === 'low') {
+        // For low priority: skills matter most, less concern about workload
+        weights = {
+          skillMatch: 0.50,
+          availability: 0.20,
+          workloadCapacity: 0.15,
+          performance: 0.15
+        };
+      } else {
+        // Medium priority: balanced approach
+        weights = {
+          skillMatch: 0.40,
+          availability: 0.25,
+          workloadCapacity: 0.20,
+          performance: 0.15
+        };
+      }
+
+      const baseMatchScore =
+        (skillMatch * weights.skillMatch) +
+        (availabilityScore * weights.availability) +
+        (workloadCapacity * weights.workloadCapacity) +
+        (performanceScore * weights.performance);
+
+      // Apply priority urgency multiplier (but cap at 100)
+      const matchScore = Math.min(100, baseMatchScore * priorityUrgency);
 
       return {
         ...emp,
@@ -180,8 +246,19 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
         skillMatch: Math.round(skillMatch),
         workloadCapacity: Math.round(workloadCapacity)
       };
-    }).sort((a, b) => b.matchScore - a.matchScore);
-  }, [employees, requiredSkills]);
+    }).sort((a, b) => {
+      // Primary sort: match score
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+      // Secondary sort: availability (available employees first)
+      if (a.availability !== b.availability) {
+        return a.availability ? -1 : 1;
+      }
+      // Tertiary sort: lower workload
+      return a.current_workload - b.current_workload;
+    });
+  }, [employees, requiredSkills, taskPriority]);
 
   const topRecommendations = rankedEmployees.slice(0, 3);
 
@@ -431,9 +508,11 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
                                 <div className="flex items-center justify-between text-sm">
                                   <span className="text-muted-foreground flex items-center gap-1">
                                     <Users className="h-3 w-3" />
-                                    Availability
+                                    Status
                                   </span>
-                                  <span className="font-medium">{emp.workloadCapacity}%</span>
+                                  <Badge variant={emp.availability ? "default" : "destructive"} className="text-xs">
+                                    {emp.availability ? "Available" : "Unavailable"}
+                                  </Badge>
                                 </div>
                                 <div className="flex items-center justify-between text-sm">
                                   <span className="text-muted-foreground flex items-center gap-1">

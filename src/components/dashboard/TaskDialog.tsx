@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -17,8 +18,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp } from "lucide-react";
+import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp, Edit2, X as XIcon, Save } from "lucide-react";
 // import ChatInterface from "./ChatInterface"; // TODO: Component not yet implemented
 import { taskProgressSchema, type TaskProgressFormData } from "@/lib/validation";
 import {
@@ -30,6 +32,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import ErrorBoundary from "@/components/ui/error-boundary";
+
+// Schema for task editing
+const taskEditSchema = z.object({
+  title: z.string().min(3, "Title must be at least 3 characters"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  priority: z.enum(["low", "medium", "high"]),
+  deadline: z.string().optional(),
+});
+
+type TaskEditFormData = z.infer<typeof taskEditSchema>;
 
 interface Task {
   id: string;
@@ -69,6 +81,7 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
   const [loading, setLoading] = useState(false);
   const [taskUpdates, setTaskUpdates] = useState<TaskUpdate[]>([]);
   const [loadingUpdates, setLoadingUpdates] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
 
   const form = useForm<TaskProgressFormData>({
     resolver: zodResolver(taskProgressSchema),
@@ -78,6 +91,27 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
       updateText: "",
     },
   });
+
+  const editForm = useForm<TaskEditFormData>({
+    resolver: zodResolver(taskEditSchema),
+    defaultValues: {
+      title: task.title,
+      description: task.description,
+      priority: task.priority as "low" | "medium" | "high",
+      deadline: task.deadline || "",
+    },
+  });
+
+  // Reset edit form when task changes
+  useEffect(() => {
+    editForm.reset({
+      title: task.title,
+      description: task.description,
+      priority: task.priority as "low" | "medium" | "high",
+      deadline: task.deadline || "",
+    });
+    setIsEditing(false);
+  }, [task, editForm]);
 
   const loadTaskUpdates = async () => {
     setLoadingUpdates(true);
@@ -192,6 +226,33 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
     }
   };
 
+  const handleSaveTaskEdit = async (data: TaskEditFormData) => {
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("tasks")
+        .update({
+          title: data.title,
+          description: data.description,
+          priority: data.priority,
+          deadline: data.deadline || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", task.id);
+
+      if (error) throw error;
+
+      toast.success("Task updated successfully");
+      setIsEditing(false);
+      onClose();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to update task";
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
@@ -236,97 +297,212 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
         >
           <DialogHeader>
             <div className="flex items-start justify-between">
-              <div>
+              <div className="flex-1">
                 <DialogTitle className="text-2xl" id="task-dialog-title">{task.title}</DialogTitle>
                 <div className="flex items-center gap-2 mt-2" aria-label={`Status: ${task.status}, Priority: ${task.priority}`}>
                   {getStatusBadge(task.status)}
                   {getPriorityBadge(task.priority)}
                 </div>
               </div>
+              {isAdmin && !isEditing && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditing(true)}
+                  className="ml-2"
+                >
+                  <Edit2 className="h-4 w-4 mr-2" />
+                  Edit Task
+                </Button>
+              )}
+              {isAdmin && isEditing && (
+                <div className="flex gap-2 ml-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsEditing(false);
+                      editForm.reset();
+                    }}
+                  >
+                    <XIcon className="h-4 w-4 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={editForm.handleSubmit(handleSaveTaskEdit)}
+                    disabled={loading}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save
+                  </Button>
+                </div>
+              )}
             </div>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto space-y-4 md:space-y-6 py-2 md:py-4">
-            {/* Task Details */}
-            <Card>
-              <CardContent className="pt-4 md:pt-6 space-y-3 md:space-y-4">
-                <div>
-                  <Label className="text-base md:text-lg font-semibold" id="task-description-label">Description</Label>
-                  <p className="text-xs md:text-sm text-muted-foreground mt-1 md:mt-2" aria-labelledby="task-description-label">
-                    {task.description}
-                  </p>
-                </div>
+            {/* Task Details or Edit Form */}
+            {isEditing && isAdmin ? (
+              <Card>
+                <CardContent className="pt-4 md:pt-6">
+                  <Form {...editForm}>
+                    <form onSubmit={editForm.handleSubmit(handleSaveTaskEdit)} className="space-y-4">
+                      <FormField
+                        control={editForm.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Task Title *</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Enter task title" />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                <Separator aria-hidden="true" />
+                      <FormField
+                        control={editForm.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description *</FormLabel>
+                            <FormControl>
+                              <Textarea {...field} placeholder="Enter task description" rows={4} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
-                  {task.profiles && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                          control={editForm.control}
+                          name="priority"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Priority *</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select priority" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={editForm.control}
+                          name="deadline"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Deadline</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  min={new Date().toISOString().split('T')[0]}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <CardContent className="pt-4 md:pt-6 space-y-3 md:space-y-4">
+                  <div>
+                    <Label className="text-base md:text-lg font-semibold" id="task-description-label">Description</Label>
+                    <p className="text-xs md:text-sm text-muted-foreground mt-1 md:mt-2" aria-labelledby="task-description-label">
+                      {task.description}
+                    </p>
+                  </div>
+
+                  <Separator aria-hidden="true" />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4">
+                    {task.profiles && (
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Assigned To</Label>
+                          <p className="text-sm font-medium" aria-label={`Assigned to: ${task.profiles.full_name}`}>
+                            {task.profiles.full_name}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {task.deadline && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <div>
+                          <Label className="text-xs text-muted-foreground">Deadline</Label>
+                          <p className="text-sm font-medium" aria-label={`Deadline: ${new Date(task.deadline).toLocaleDateString()}`}>
+                            {new Date(task.deadline).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-2">
-                      <User className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       <div>
-                        <Label className="text-xs text-muted-foreground">Assigned To</Label>
-                        <p className="text-sm font-medium" aria-label={`Assigned to: ${task.profiles.full_name}`}>
-                          {task.profiles.full_name}
+                        <Label className="text-xs text-muted-foreground">Progress</Label>
+                        <p className="text-sm font-medium" aria-label={`Progress: ${task.progress}%`}>
+                          {task.progress}%
                         </p>
                       </div>
                     </div>
-                  )}
 
-                  {task.deadline && (
                     <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                      <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                       <div>
-                        <Label className="text-xs text-muted-foreground">Deadline</Label>
-                        <p className="text-sm font-medium" aria-label={`Deadline: ${new Date(task.deadline).toLocaleDateString()}`}>
-                          {new Date(task.deadline).toLocaleDateString()}
+                        <Label className="text-xs text-muted-foreground">Created</Label>
+                        <p className="text-sm font-medium" aria-label={`Created: ${new Date(task.created_at).toLocaleDateString()}`}>
+                          {new Date(task.created_at).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Progress</Label>
-                      <p className="text-sm font-medium" aria-label={`Progress: ${task.progress}%`}>
-                        {task.progress}%
-                      </p>
+                  {/* Progress Bar */}
+                  <div>
+                    <div className="flex items-center justify-between text-sm mb-2">
+                      <span className="text-muted-foreground">Overall Progress</span>
+                      <span className="font-medium" aria-hidden="true">{task.progress}%</span>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Created</Label>
-                      <p className="text-sm font-medium" aria-label={`Created: ${new Date(task.created_at).toLocaleDateString()}`}>
-                        {new Date(task.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div>
-                  <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-muted-foreground">Overall Progress</span>
-                    <span className="font-medium" aria-hidden="true">{task.progress}%</span>
-                  </div>
-                  <div
-                    className="w-full bg-secondary rounded-full h-3"
-                    role="progressbar"
-                    aria-valuenow={task.progress}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label={`Task progress: ${task.progress}%`}
-                  >
                     <div
-                      className="bg-primary h-3 rounded-full transition-all"
-                      style={{ width: `${task.progress}%` }}
-                    />
+                      className="w-full bg-secondary rounded-full h-3"
+                      role="progressbar"
+                      aria-valuenow={task.progress}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Task progress: ${task.progress}%`}
+                    >
+                      <div
+                        className="bg-primary h-3 rounded-full transition-all"
+                        style={{ width: `${task.progress}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Accept/Reject for invited tasks */}
             {!isAdmin && task.assigned_to === userId && task.status === "invited" && (

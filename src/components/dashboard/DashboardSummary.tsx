@@ -161,10 +161,22 @@ const DashboardSummary = () => {
         ? Math.round((completedCount || 0) / totalTasks * 100)
         : 0;
 
-      // Get workload balance
-      const { data: workloadData } = await supabase
+      // Get workload balance - calculate from actual tasks
+      const { data: employeeProfiles } = await supabase
         .from("employee_profiles")
-        .select("current_workload");
+        .select("user_id");
+
+      const { data: activeTasks } = await supabase
+        .from("tasks")
+        .select("assigned_to")
+        .in("status", ["ongoing", "accepted"]);
+
+      // Count tasks per employee
+      const taskCounts = new Map<string, number>();
+      activeTasks?.forEach(task => {
+        const count = taskCounts.get(task.assigned_to) || 0;
+        taskCounts.set(task.assigned_to, count + 1);
+      });
 
       const workloadRanges = [
         { range: "0-2 tasks", min: 0, max: 2, count: 0 },
@@ -172,8 +184,8 @@ const DashboardSummary = () => {
         { range: "6+ tasks", min: 6, max: 999, count: 0 },
       ];
 
-      workloadData?.forEach((emp) => {
-        const workload = (emp.current_workload as number) || 0;
+      employeeProfiles?.forEach((emp) => {
+        const workload = taskCounts.get(emp.user_id) || 0;
         for (const range of workloadRanges) {
           if (workload >= range.min && workload <= range.max) {
             range.count++;

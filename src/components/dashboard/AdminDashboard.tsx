@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { LogOut, Users, ListTodo, BarChart3, Settings, Search, DollarSign } from "lucide-react";
+import { LogOut, Users, ListTodo, BarChart3, Settings, Search, DollarSign, UserCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import EmployeeList from "./EmployeeList";
 import TaskList from "./TaskList";
 import DashboardSummary from "./DashboardSummary";
 import PaymentManagement from "./PaymentManagement";
+import Profile from "@/components/profile/Profile";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -70,6 +71,10 @@ const AdminDashboard = () => {
             setActiveView("payments");
             break;
           case '6':
+            e.preventDefault();
+            setActiveView("profile");
+            break;
+          case '7':
             e.preventDefault();
             setActiveView("settings");
             break;
@@ -134,6 +139,15 @@ const AdminDashboard = () => {
           >
             <DollarSign className="mr-2 h-4 w-4" aria-hidden="true" />
             Payments
+          </Button>
+          <Button
+            variant={activeView === "profile" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("profile")}
+            aria-current={activeView === "profile" ? "page" : undefined}
+          >
+            <UserCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+            Profile
           </Button>
           <Button
             variant={activeView === "settings" ? "default" : "ghost"}
@@ -227,6 +241,11 @@ const AdminDashboard = () => {
           {activeView === "payments" && (
             <ErrorBoundary componentName="PaymentManagement">
               <PaymentManagement userRole="admin" />
+            </ErrorBoundary>
+          )}
+          {activeView === "profile" && (
+            <ErrorBoundary componentName="Profile">
+              <Profile userId={user.id} userRole="admin" />
             </ErrorBoundary>
           )}
           {activeView === "settings" && (

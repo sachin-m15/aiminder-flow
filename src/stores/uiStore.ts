@@ -39,7 +39,7 @@ export const useUIStore = create<UIState>()(
       theme: 'system',
       sidebarOpen: true,
       sidebarCollapsed: false,
-      activeView: 'dashboard',
+      activeView: 'overview',
       searchQuery: '',
       refreshTrigger: 0,
       statusFilter: 'all',

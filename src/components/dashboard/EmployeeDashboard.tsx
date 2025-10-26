@@ -1,11 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, ListTodo, Inbox, DollarSign } from "lucide-react";
+import { LogOut, ListTodo, Inbox, Home, UserCircle } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import TaskList from "./TaskList";
 import EmployeeInbox from "./EmployeeInbox";
-import PaymentManagement from "./PaymentManagement";
+import EmployeeDashboardSummary from "./EmployeeDashboardSummary";
+import EmployeeOnboarding from "@/components/onboarding/EmployeeOnboarding";
+import Profile from "@/components/profile/Profile";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -21,6 +24,42 @@ const EmployeeDashboard = () => {
     triggerRefresh
   } = useUIStore();
   const { unreadCount, markAllAsRead, subscribeToRealtimeUpdates } = useNotificationStore();
+  const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+
+  // Check if user needs onboarding
+  useEffect(() => {
+    const checkOnboardingStatus = async () => {
+      if (!user?.id) return;
+
+      try {
+        // Check if employee profile exists and has required fields
+        const { data: empProfile, error } = await supabase
+          .from("employee_profiles")
+          .select("department, designation, hourly_rate")
+          .eq("user_id", user.id)
+          .single();
+
+        if (error && error.code !== "PGRST116") {
+          console.error("Error checking onboarding:", error);
+          setNeedsOnboarding(false);
+          return;
+        }
+
+        // Check if profile exists and has all required fields
+        const isComplete = empProfile &&
+          empProfile.department &&
+          empProfile.designation &&
+          empProfile.hourly_rate;
+
+        setNeedsOnboarding(!isComplete);
+      } catch (error) {
+        console.error("Error checking onboarding:", error);
+        setNeedsOnboarding(false);
+      }
+    };
+
+    checkOnboardingStatus();
+  }, [user?.id]);
 
   // Enable optimized real-time notifications
   useRealtimeNotificationsOptimized({
@@ -44,6 +83,10 @@ const EmployeeDashboard = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
         switch (e.key) {
+          case '0':
+            e.preventDefault();
+            setActiveView("overview");
+            break;
           case '1':
             e.preventDefault();
             setActiveView("inbox");
@@ -55,7 +98,7 @@ const EmployeeDashboard = () => {
             break;
           case '3':
             e.preventDefault();
-            setActiveView("payments");
+            setActiveView("profile");
             break;
         }
       }
@@ -73,6 +116,26 @@ const EmployeeDashboard = () => {
     toast.success("Logged out successfully");
   };
 
+  const handleOnboardingComplete = () => {
+    setNeedsOnboarding(false);
+    toast.success("Welcome to ChatFlow Agent! 🎉");
+    triggerRefresh();
+  };
+
+  // Show loading state while checking onboarding
+  if (needsOnboarding === null) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Show onboarding if needed
+  if (needsOnboarding) {
+    return <EmployeeOnboarding userId={user.id} onComplete={handleOnboardingComplete} />;
+  }
+
   return (
     <div className="h-screen bg-background flex flex-col md:flex-row overflow-hidden">
       {/* Sidebar - Fixed height, independently scrollable */}
@@ -83,6 +146,15 @@ const EmployeeDashboard = () => {
         </div>
 
         <nav className="flex-1 p-4 space-y-2 hidden md:block overflow-y-auto" aria-label="Employee dashboard navigation">
+          <Button
+            variant={activeView === "overview" ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => setActiveView("overview")}
+            aria-current={activeView === "overview" ? "page" : undefined}
+          >
+            <Home className="mr-2 h-4 w-4" aria-hidden="true" />
+            Overview
+          </Button>
           <Button
             variant={activeView === "inbox" ? "default" : "ghost"}
             className="w-full justify-start relative"
@@ -115,13 +187,13 @@ const EmployeeDashboard = () => {
             My Tasks
           </Button>
           <Button
-            variant={activeView === "payments" ? "default" : "ghost"}
+            variant={activeView === "profile" ? "default" : "ghost"}
             className="w-full justify-start"
-            onClick={() => setActiveView("payments")}
-            aria-current={activeView === "payments" ? "page" : undefined}
+            onClick={() => setActiveView("profile")}
+            aria-current={activeView === "profile" ? "page" : undefined}
           >
-            <DollarSign className="mr-2 h-4 w-4" aria-hidden="true" />
-            My Payments
+            <UserCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+            Profile
           </Button>
         </nav>
 
@@ -155,6 +227,15 @@ const EmployeeDashboard = () => {
         </div>
 
         <div className="p-4 md:p-6 flex-1 overflow-y-auto">
+          {activeView === "overview" && (
+            <ErrorBoundary componentName="EmployeeDashboardSummary">
+              <EmployeeDashboardSummary
+                key={refreshTrigger}
+                userId={user.id}
+                onNavigate={setActiveView}
+              />
+            </ErrorBoundary>
+          )}
           {activeView === "inbox" && (
             <ErrorBoundary componentName="EmployeeInbox">
               <EmployeeInbox key={refreshTrigger} userId={user.id} />
@@ -165,9 +246,9 @@ const EmployeeDashboard = () => {
               <TaskList key={refreshTrigger} isAdmin={false} />
             </ErrorBoundary>
           )}
-          {activeView === "payments" && (
-            <ErrorBoundary componentName="PaymentManagement">
-              <PaymentManagement userRole="employee" />
+          {activeView === "profile" && (
+            <ErrorBoundary componentName="Profile">
+              <Profile userId={user.id} userRole="employee" />
             </ErrorBoundary>
           )}
         </div>

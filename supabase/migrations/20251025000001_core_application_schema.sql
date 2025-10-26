@@ -491,3 +491,10 @@ BEGIN
   RAISE NOTICE 'Added: indexes, functions, triggers, RLS policies, and realtime configuration';
   RAISE NOTICE 'Core application features are now consolidated and organized';
 END $$;
+
+-- Add bio field to employee_profiles table
+ALTER TABLE public.employee_profiles
+ADD COLUMN IF NOT EXISTS bio TEXT;
+
+-- Add comment
+COMMENT ON COLUMN public.employee_profiles.bio IS 'Professional bio or description of the employee';

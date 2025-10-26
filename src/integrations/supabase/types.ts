@@ -43,6 +43,7 @@ export type Database = {
         Row: {
           availability: boolean | null
           avg_completion_time: unknown
+          bio: string | null
           created_at: string | null
           current_workload: number | null
           department: string | null
@@ -59,6 +60,7 @@ export type Database = {
         Insert: {
           availability?: boolean | null
           avg_completion_time?: unknown
+          bio?: string | null
           created_at?: string | null
           current_workload?: number | null
           department?: string | null
@@ -75,6 +77,7 @@ export type Database = {
         Update: {
           availability?: boolean | null
           avg_completion_time?: unknown
+          bio?: string | null
           created_at?: string | null
           current_workload?: number | null
           department?: string | null
