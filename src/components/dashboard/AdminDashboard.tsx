@@ -10,7 +10,7 @@ import TaskList from "./TaskList";
 import DashboardSummary from "./DashboardSummary";
 import PaymentManagement from "./PaymentManagement";
 import Profile from "@/components/profile/Profile";
-import Chat from "./Chat";
+import AIChat from "./AIChat";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -240,7 +240,7 @@ const AdminDashboard = () => {
           )}
           {activeView === "chat" && (
             <ErrorBoundary componentName="Chat">
-              <Chat userRole="admin" />
+              <AIChat userRole="admin" />
             </ErrorBoundary>
           )}
           {activeView === "employees" && (

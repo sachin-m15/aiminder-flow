@@ -9,7 +9,7 @@ import EmployeeInbox from "./EmployeeInbox";
 import EmployeeDashboardSummary from "./EmployeeDashboardSummary";
 import EmployeeOnboarding from "@/components/onboarding/EmployeeOnboarding";
 import Profile from "@/components/profile/Profile";
-import Chat from "./Chat";
+import AIChat from "./AIChat";
 import { useRealtimeNotificationsOptimized } from "@/hooks/use-realtime-notifications-optimized";
 import ErrorBoundary from "@/components/ui/error-boundary";
 import { useAuthStore } from "@/stores/authStore";
@@ -252,7 +252,7 @@ const EmployeeDashboard = () => {
           )}
           {activeView === "chat" && (
             <ErrorBoundary componentName="Chat">
-              <Chat userRole="employee" />
+              <AIChat userRole="employee" />
             </ErrorBoundary>
           )}
           {activeView === "inbox" && (
