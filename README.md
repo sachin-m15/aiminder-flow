@@ -15,7 +15,7 @@ An intelligent task management and employee tracking platform powered by AI. Man
 - ✅ **Task Management** - Update progress, log hours, submit work
 - 📊 **Performance Tracking** - View your metrics and completed tasks
 
-## 🚀 Quick Start 
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ or Bun
