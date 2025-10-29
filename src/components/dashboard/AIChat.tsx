@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { Experimental_Agent as Agent } from 'ai';
 import ReactMarkdown from "react-markdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,8 @@ import { MessageCircle, Send, Bot, User, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { AgentRegistry } from "@/api/chat/agents/registry";
+import { chatApiClient, ChatMessage as ApiChatMessage } from "@/api/chat/client";
+import { useAuthStore } from "@/stores/authStore";
 
 interface ChatMessage {
   id: string;
@@ -28,6 +28,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuthStore();
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -59,26 +60,17 @@ const AIChat = ({ userRole }: AIChatProps) => {
     setIsLoading(true);
 
     try {
-      // Get authenticated user
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
+      // Get current session for authentication token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !user) throw new Error("User not authenticated");
 
-      // Get user role from database
-      const { data: userRoleData } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
+      // Use the user role from props or fallback to stored role
+      const currentUserRole = userRole;
 
-      const currentUserRole = userRoleData?.role as 'admin' | 'employee' || userRole;
-
-      // Get the appropriate agent for the user role
-      const agent = AgentRegistry.getAgent(currentUserRole);
-
-      // Prepare messages for agent
-      const messagesForAgent = [
+      // Prepare messages for server API
+      const messagesForApi: ApiChatMessage[] = [
         ...messages.map(msg => ({ role: msg.role, content: msg.content })),
-        { role: 'user' as const, content: input }
+        { role: 'user', content: input }
       ];
 
       // Add initial assistant message with empty content
@@ -92,35 +84,29 @@ const AIChat = ({ userRole }: AIChatProps) => {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Execute the agent directly in the browser using generate method
-      console.log('🤖 AI Agent - Starting generate with messages:', messagesForAgent);
-      const result = await agent.generate({
-        messages: messagesForAgent,
+      // Send request to server-side API
+      console.log('🤖 AI Agent - Sending to server API:', {
+        messagesCount: messagesForApi.length,
+        role: currentUserRole
       });
 
-      console.log('🤖 AI Agent - Generate result:', result);
-      
-      // Update the assistant message with the complete response
-      if (result.text) {
+      const result = await chatApiClient.sendMessage(messagesForApi, currentUserRole, session.access_token);
+
+      if (result.success) {
+        // Update the assistant message with the complete response
         setMessages(prev => prev.map(msg =>
           msg.id === assistantId
-            ? { ...msg, content: result.text }
+            ? { ...msg, content: result.response }
             : msg
         ));
         
-        console.log('🤖 AI Agent - Final Response:', {
-          contentLength: result.text.length,
+        console.log('🤖 AI Agent - Server Response:', {
+          contentLength: result.response.length,
           timestamp: new Date().toISOString()
         });
       } else {
-        throw new Error('No text response from agent');
+        throw new Error(result.error || 'Failed to get response from server');
       }
-      
-      // Log final response
-      console.log('🤖 AI Agent - Final Response:', {
-        contentLength: result.text.length,
-        timestamp: new Date().toISOString()
-      });
 
     } catch (error) {
       console.error("🤖 AI Agent - Error:", error);

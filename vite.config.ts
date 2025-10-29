@@ -9,14 +9,15 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     cors: {
-      origin: ["http://localhost:8000"],
+      origin: ["http://localhost:8080"],
       credentials: true,
     },
     proxy: {
-      '/chat': {
-        target: 'http://localhost:8000',
+      '/api': {
+        target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
+        rewrite: (path) => path.replace(/^\/api/, '/api'),
       },
     },
   },
