@@ -1,0 +1,27 @@
+{
+  "name": "aiminder-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node api.js",
+    "dev": "node api.js",
+    "vercel-build": "npm install"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^2.0.24",
+    "@ai-sdk/openai": "^2.0.56",
+    "@ai-sdk/openai-compatible": "^1.0.24",
+    "@langchain/core": "^1.0.2",
+    "@langchain/google-genai": "^1.0.0",
+    "@langchain/langgraph": "^1.0.1",
+    "@langchain/openai": "^1.0.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "ai": "^5.0.81",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "langchain": "^1.0.2",
+    "zod": "^4.1.12"
+  }
+}
