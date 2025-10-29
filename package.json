@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server/api.js",
-    "vercel-build": "npm run build"
+    "vercel-build": "npm install && cd server && npm install && cd .. && npm run build"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.53",

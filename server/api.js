@@ -15,7 +15,7 @@ import {
 } from "@langchain/core/messages";
 import { getToolsForRole } from "./tools/index.js";
 import { supabase } from "./supabase.js";
-import { listTasks, getWeather } from "./tools/admin/tasks.js";
+import { listTasks } from "./tools/admin/tasks.js";
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -24,7 +24,9 @@ const port = process.env.PORT || 3001;
 app.use(
   cors({
     origin:
-      process.env.NODE_ENV === "production"
+      process.env.VERCEL === '1'
+        ? process.env.VERCEL_URL || "https://*.vercel.app"
+        : process.env.NODE_ENV === "production"
         ? process.env.FRONTEND_URL
         : "http://localhost:8080",
     credentials: true,
@@ -149,7 +151,7 @@ IMPORTANT: When you use tools and get results, you MUST:
     // Create agent with proper tools
     const agent = createAgent({
       model: googleAI,
-      tools: [getWeather, listTasks],
+      tools: [listTasks],
       systemPrompt: systemPrompts[role] || systemPrompts.employee,
       maxSteps: 20,
     });
@@ -238,12 +240,14 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
   }
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`🚀 API server running on port ${port}`);
-  console.log(
-    `🔐 OpenAI API key configured: ${process.env.OPENAI_API_KEY ? "Yes" : "No"}`
-  );
-});
+// Start server only if not in Vercel environment
+if (process.env.VERCEL !== '1') {
+  app.listen(port, () => {
+    console.log(`🚀 API server running on port ${port}`);
+    console.log(
+      `🔐 OpenAI API key configured: ${process.env.OPENAI_API_KEY ? "Yes" : "No"}`
+    );
+  });
+}
 
 export default app;
