@@ -1,5 +1,6 @@
 {
   "version": 3,
+  "framework": null,
   "builds": [
     {
       "src": "package.json",
