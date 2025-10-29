@@ -12,96 +12,118 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "13.0.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
-      chat_messages: {
-        Row: {
-          conversation_id: string | null
-          created_at: string | null
-          id: string
-          is_ai: boolean | null
-          message: string
-          metadata: Json | null
-          task_id: string | null
-          user_id: string
-        }
-        Insert: {
-          conversation_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_ai?: boolean | null
-          message: string
-          metadata?: Json | null
-          task_id?: string | null
-          user_id: string
-        }
-        Update: {
-          conversation_id?: string | null
-          created_at?: string | null
-          id?: string
-          is_ai?: boolean | null
-          message?: string
-          metadata?: Json | null
-          task_id?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "chat_messages_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       employee_profiles: {
         Row: {
           availability: boolean | null
-          avg_completion_time: unknown | null
+          avg_completion_time: unknown
+          bio: string | null
           created_at: string | null
           current_workload: number | null
+          department: string | null
+          designation: string | null
           hourly_rate: number | null
           id: string
           on_time_rate: number | null
           performance_score: number | null
           quality_score: number | null
-          skills: string[]
           tasks_completed: number | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           availability?: boolean | null
-          avg_completion_time?: unknown | null
+          avg_completion_time?: unknown
+          bio?: string | null
           created_at?: string | null
           current_workload?: number | null
+          department?: string | null
+          designation?: string | null
           hourly_rate?: number | null
           id?: string
           on_time_rate?: number | null
           performance_score?: number | null
           quality_score?: number | null
-          skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           availability?: boolean | null
-          avg_completion_time?: unknown | null
+          avg_completion_time?: unknown
+          bio?: string | null
           created_at?: string | null
           current_workload?: number | null
+          department?: string | null
+          designation?: string | null
           hourly_rate?: number | null
           id?: string
           on_time_rate?: number | null
           performance_score?: number | null
           quality_score?: number | null
-          skills?: string[]
           tasks_completed?: number | null
           updated_at?: string | null
           user_id?: string
         }
         Relationships: []
+      }
+      employee_skills: {
+        Row: {
+          created_at: string | null
+          employee_id: string
+          id: string
+          skill: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          employee_id: string
+          id?: string
+          skill: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          employee_id?: string
+          id?: string
+          skill?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_skills_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employee_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invitations: {
         Row: {
@@ -215,6 +237,89 @@ export type Database = {
         }
         Relationships: []
       }
+      task_attachments: {
+        Row: {
+          file_name: string
+          file_path: string
+          file_size: number
+          id: string
+          mime_type: string
+          task_id: string
+          task_update_id: string
+          uploaded_at: string | null
+          user_id: string
+        }
+        Insert: {
+          file_name: string
+          file_path: string
+          file_size: number
+          id?: string
+          mime_type: string
+          task_id: string
+          task_update_id: string
+          uploaded_at?: string | null
+          user_id: string
+        }
+        Update: {
+          file_name?: string
+          file_path?: string
+          file_size?: number
+          id?: string
+          mime_type?: string
+          task_id?: string
+          task_update_id?: string
+          uploaded_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_attachments_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_attachments_task_update_id_fkey"
+            columns: ["task_update_id"]
+            isOneToOne: false
+            referencedRelation: "task_updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_required_skills: {
+        Row: {
+          created_at: string | null
+          id: string
+          skill: string
+          task_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          skill: string
+          task_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          skill?: string
+          task_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_required_skills_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_updates: {
         Row: {
           created_at: string | null
@@ -267,7 +372,7 @@ export type Database = {
           id: string
           priority: string | null
           progress: number | null
-          required_skills: string[] | null
+          started_at: string | null
           status: Database["public"]["Enums"]["task_status"] | null
           title: string
           updated_at: string | null
@@ -285,7 +390,7 @@ export type Database = {
           id?: string
           priority?: string | null
           progress?: number | null
-          required_skills?: string[] | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title: string
           updated_at?: string | null
@@ -303,7 +408,7 @@ export type Database = {
           id?: string
           priority?: string | null
           progress?: number | null
-          required_skills?: string[] | null
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"] | null
           title?: string
           updated_at?: string | null
@@ -336,6 +441,26 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_orphaned_attachment_files: {
+        Args: never
+        Returns: {
+          deleted_path: string
+        }[]
+      }
+      clear_consolidated_sample_data: { Args: never; Returns: string }
+      get_employee_skills: { Args: { _employee_id: string }; Returns: string[] }
+      get_task_required_skills: {
+        Args: { _task_id: string }
+        Returns: string[]
+      }
+      get_task_update_attachments_count: {
+        Args: { p_task_update_id: string }
+        Returns: number
+      }
+      get_task_update_attachments_size: {
+        Args: { p_task_update_id: string }
+        Returns: number
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -343,6 +468,17 @@ export type Database = {
         }
         Returns: boolean
       }
+      make_user_admin: { Args: { user_email: string }; Returns: string }
+      make_user_employee: {
+        Args: {
+          user_department?: string
+          user_designation?: string
+          user_email: string
+          user_skills?: string[]
+        }
+        Returns: string
+      }
+      seed_consolidated_sample_data: { Args: never; Returns: string }
     }
     Enums: {
       app_role: "admin" | "staff" | "employee"
@@ -478,6 +614,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_role: ["admin", "staff", "employee"],

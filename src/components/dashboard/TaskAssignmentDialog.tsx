@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
@@ -11,29 +13,64 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { Star, TrendingUp, Users, Zap, CheckCircle, AlertCircle } from "lucide-react";
+import { taskAssignmentSchema, type TaskAssignmentFormData } from "@/lib/validation";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 
 interface TaskAssignmentDialogProps {
   open: boolean;
   onClose: () => void;
   adminId: string;
+  onSuccess?: () => void;
 }
 
 interface Employee {
   user_id: string;
+  skills: string[];
+  department: string | null;
+  designation: string | null;
+  performance_score: number;
+  current_workload: number;
+  availability: boolean;
   profiles: {
     full_name: string;
-  };
+  } | null;
 }
 
-const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogProps) => {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState("medium");
-  const [deadline, setDeadline] = useState("");
-  const [selectedEmployee, setSelectedEmployee] = useState("");
+interface EmployeeWithScore extends Employee {
+  matchScore: number;
+  skillMatch: number;
+  workloadCapacity: number;
+}
+
+const TaskAssignmentDialog = ({ open, onClose, adminId, onSuccess }: TaskAssignmentDialogProps) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+
+  const form = useForm<TaskAssignmentFormData>({
+    resolver: zodResolver(taskAssignmentSchema),
+    defaultValues: {
+      title: "",
+      description: "",
+      priority: "medium",
+      deadline: "",
+      requiredSkills: "",
+      selectedEmployee: "",
+    },
+  });
 
   useEffect(() => {
     if (open) {
@@ -42,40 +79,199 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
   }, [open]);
 
   const loadEmployees = async () => {
-    const { data: employeeData } = await supabase
-      .from("employee_profiles")
-      .select("user_id");
+    try {
+      // First, get employee profiles (including availability)
+      const { data: employeeData, error: empError } = await supabase
+        .from("employee_profiles")
+        .select("id, user_id, department, designation, performance_score, current_workload, availability");
 
-    if (employeeData) {
-      const userIds = employeeData.map((e) => e.user_id);
-      const { data: profileData } = await supabase
+      if (empError) throw empError;
+
+      if (!employeeData || employeeData.length === 0) {
+        setEmployees([]);
+        return;
+      }
+
+      // Get employee IDs and user IDs
+      const employeeIds = employeeData.map(e => e.id);
+      const userIds = employeeData.map(e => e.user_id);
+
+      // Fetch skills from employee_skills table
+      const { data: skillsData, error: skillsError } = await supabase
+        .from("employee_skills")
+        .select("employee_id, skill")
+        .in("employee_id", employeeIds);
+
+      if (skillsError) throw skillsError;
+
+      // Fetch profiles for those users
+      const { data: profilesData, error: profilesError } = await supabase
         .from("profiles")
         .select("id, full_name")
         .in("id", userIds);
 
-      const merged = employeeData.map((emp) => ({
-        ...emp,
-        profiles: profileData?.find((p) => p.id === emp.user_id) || { full_name: "" },
-      }));
+      if (profilesError) throw profilesError;
 
-      setEmployees(merged);
+      // Fetch actual task counts for each employee
+      const { data: tasksData, error: tasksError } = await supabase
+        .from("tasks")
+        .select("assigned_to")
+        .in("assigned_to", userIds)
+        .in("status", ["ongoing", "accepted"]);
+
+      if (tasksError) throw tasksError;
+
+      // Count tasks per employee
+      const taskCounts = new Map<string, number>();
+      tasksData?.forEach(task => {
+        const count = taskCounts.get(task.assigned_to) || 0;
+        taskCounts.set(task.assigned_to, count + 1);
+      });
+
+      // Merge the data
+      const employeesWithProfiles = employeeData.map(emp => {
+        const empSkills = skillsData?.filter(s => s.employee_id === emp.id).map(s => s.skill) || [];
+        return {
+          user_id: emp.user_id,
+          department: emp.department,
+          designation: emp.designation,
+          performance_score: emp.performance_score,
+          current_workload: taskCounts.get(emp.user_id) || 0, // Use actual task count
+          availability: emp.availability,
+          skills: empSkills,
+          profiles: profilesData?.find(p => p.id === emp.user_id) || null
+        };
+      });
+
+      setEmployees(employeesWithProfiles as unknown as Employee[]);
+    } catch (error) {
+      console.error("Error loading employees:", error);
+      toast.error("Failed to load employees");
     }
   };
 
-  const handleSubmit = async () => {
-    if (!title || !description || !selectedEmployee) {
-      toast.error("Please fill all required fields");
-      return;
+  // Watch required skills and priority for AI recommendations
+  const requiredSkills = form.watch("requiredSkills") || "";
+  const taskPriority = form.watch("priority") || "medium";
+
+  // AI-powered employee scoring algorithm
+  const rankedEmployees = useMemo((): EmployeeWithScore[] => {
+    if (!requiredSkills.trim() || employees.length === 0) {
+      return employees.map(emp => ({
+        ...emp,
+        matchScore: 0,
+        skillMatch: 0,
+        workloadCapacity: 0
+      }));
     }
 
+    const skillKeywords = requiredSkills.toLowerCase().split(',').map(s => s.trim());
+
+    // Priority urgency multiplier
+    const priorityUrgency = {
+      low: 0.8,
+      medium: 1.0,
+      high: 1.3
+    }[taskPriority] || 1.0;
+
+    return employees.map(emp => {
+      // 1. SKILL MATCH SCORE (0-100) - Most important factor
+      const employeeSkills = emp.skills.map(s => s.toLowerCase());
+      const matchedSkills = skillKeywords.filter(keyword =>
+        employeeSkills.some(empSkill => empSkill.includes(keyword) || keyword.includes(empSkill))
+      );
+      const skillMatch = skillKeywords.length > 0
+        ? (matchedSkills.length / skillKeywords.length) * 100
+        : 0;
+
+      // 2. AVAILABILITY SCORE (0-100) - Critical blocker
+      // If employee is not available, drastically reduce their score
+      const availabilityScore = emp.availability ? 100 : 10;
+
+      // 3. WORKLOAD CAPACITY (0-100) - Lower workload = Higher score
+      // Adjusted based on task priority - high priority tasks need employees with lower workload
+      const maxWorkload = 10;
+      let workloadCapacity = Math.max(0, ((maxWorkload - emp.current_workload) / maxWorkload) * 100);
+
+      // For high priority tasks, penalize high workload more heavily
+      if (taskPriority === 'high') {
+        if (emp.current_workload >= 5) {
+          workloadCapacity = workloadCapacity * 0.5; // 50% penalty for busy employees
+        }
+      }
+
+      // 4. PERFORMANCE SCORE (0-100) - Track record matters
+      const performanceScore = emp.performance_score || 50;
+
+      // 5. CALCULATED WEIGHTED SCORE
+      // Weights adjusted based on task priority
+      let weights;
+      if (taskPriority === 'high') {
+        // For high priority: prioritize availability, workload, then skills
+        weights = {
+          skillMatch: 0.35,
+          availability: 0.30,
+          workloadCapacity: 0.25,
+          performance: 0.10
+        };
+      } else if (taskPriority === 'low') {
+        // For low priority: skills matter most, less concern about workload
+        weights = {
+          skillMatch: 0.50,
+          availability: 0.20,
+          workloadCapacity: 0.15,
+          performance: 0.15
+        };
+      } else {
+        // Medium priority: balanced approach
+        weights = {
+          skillMatch: 0.40,
+          availability: 0.25,
+          workloadCapacity: 0.20,
+          performance: 0.15
+        };
+      }
+
+      const baseMatchScore =
+        (skillMatch * weights.skillMatch) +
+        (availabilityScore * weights.availability) +
+        (workloadCapacity * weights.workloadCapacity) +
+        (performanceScore * weights.performance);
+
+      // Apply priority urgency multiplier (but cap at 100)
+      const matchScore = Math.min(100, baseMatchScore * priorityUrgency);
+
+      return {
+        ...emp,
+        matchScore: Math.round(matchScore),
+        skillMatch: Math.round(skillMatch),
+        workloadCapacity: Math.round(workloadCapacity)
+      };
+    }).sort((a, b) => {
+      // Primary sort: match score
+      if (b.matchScore !== a.matchScore) {
+        return b.matchScore - a.matchScore;
+      }
+      // Secondary sort: availability (available employees first)
+      if (a.availability !== b.availability) {
+        return a.availability ? -1 : 1;
+      }
+      // Tertiary sort: lower workload
+      return a.current_workload - b.current_workload;
+    });
+  }, [employees, requiredSkills, taskPriority]);
+
+  const topRecommendations = rankedEmployees.slice(0, 3);
+
+  const handleSubmit = async (data: TaskAssignmentFormData) => {
     setLoading(true);
     try {
       const { error } = await supabase.from("tasks").insert({
-        title,
-        description,
-        priority,
-        deadline: deadline || null,
-        assigned_to: selectedEmployee,
+        title: data.title,
+        description: data.description,
+        priority: data.priority,
+        deadline: data.deadline || null,
+        assigned_to: data.selectedEmployee,
         created_by: adminId,
         status: "invited",
       });
@@ -83,14 +279,13 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
       if (error) throw error;
 
       toast.success("Task assigned successfully!");
-      setTitle("");
-      setDescription("");
-      setPriority("medium");
-      setDeadline("");
-      setSelectedEmployee("");
+      form.reset();
+      setShowRecommendations(false);
+      onSuccess?.(); // Trigger refresh
       onClose();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to assign task");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to assign task";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -98,83 +293,291 @@ const TaskAssignmentDialog = ({ open, onClose, adminId }: TaskAssignmentDialogPr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Assign New Task</DialogTitle>
+          <DialogTitle className="text-2xl">Assign New Task</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Task Title *</Label>
-            <Input
-              id="title"
-              placeholder="Enter task title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Left Column - Task Details */}
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6 space-y-4">
+                  <h3 className="font-semibold text-lg">Task Details</h3>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Description *</Label>
-            <Textarea
-              id="description"
-              placeholder="Describe the task in detail..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={4}
-            />
-          </div>
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="title"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Task Title *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter task title"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="priority">Priority</Label>
-              <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                </SelectContent>
-              </Select>
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Description *</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                placeholder="Describe the task in detail..."
+                                {...field}
+                                rows={4}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="requiredSkills"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Required Skills (comma-separated)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="e.g., React, Node.js, PostgreSQL"
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  if (e.target.value.trim()) {
+                                    setShowRecommendations(true);
+                                  }
+                                }}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                            <p className="text-xs text-muted-foreground">
+                              Enter skills to get AI-powered employee recommendations
+                            </p>
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name="priority"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Priority</FormLabel>
+                              <Select value={field.value} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="low">Low</SelectItem>
+                                  <SelectItem value="medium">Medium</SelectItem>
+                                  <SelectItem value="high">High</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="deadline"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Deadline</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  min={new Date().toISOString().split('T')[0]}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <Separator />
+
+                      <FormField
+                        control={form.control}
+                        name="selectedEmployee"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Assign To *</FormLabel>
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select an employee" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {employees.map((emp) => (
+                                  <SelectItem key={emp.user_id} value={emp.user_id}>
+                                    {emp.profiles?.full_name || "Unknown"}
+                                    {emp.current_workload > 0 && ` (${emp.current_workload} tasks)`}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="deadline">Deadline</Label>
-              <Input
-                id="deadline"
-                type="date"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-              />
+            {/* Right Column - AI Recommendations */}
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Zap className="h-5 w-5 text-yellow-500" />
+                    <h3 className="font-semibold text-lg">AI Recommendations</h3>
+                  </div>
+
+                  {!showRecommendations || !form.watch("requiredSkills").trim() ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <AlertCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">Enter required skills to see employee recommendations</p>
+                    </div>
+                  ) : (
+                    <ScrollArea className="h-[500px] pr-4">
+                      <div className="space-y-3">
+                        {topRecommendations.map((emp, index) => (
+                          <Card
+                            key={emp.user_id}
+                            className={`cursor-pointer transition-all ${form.watch("selectedEmployee") === emp.user_id
+                              ? 'ring-2 ring-primary bg-primary/5'
+                              : 'hover:shadow-md'
+                              } ${index === 0 ? 'border-yellow-300' : ''}`}
+                            onClick={() => form.setValue("selectedEmployee", emp.user_id)}
+                          >
+                            <CardContent className="pt-4">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    {index === 0 && (
+                                      <Badge className="bg-yellow-500 hover:bg-yellow-600">
+                                        <Star className="h-3 w-3 mr-1" />
+                                        Top Match
+                                      </Badge>
+                                    )}
+                                    <h4 className="font-semibold">
+                                      {emp.profiles?.full_name || "Unknown"}
+                                    </h4>
+                                  </div>
+                                  {emp.designation && (
+                                    <p className="text-sm text-muted-foreground">
+                                      {emp.designation} {emp.department && `• ${emp.department}`}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant={emp.matchScore >= 80 ? "default" : emp.matchScore >= 60 ? "secondary" : "outline"}
+                                  className="text-lg font-bold"
+                                >
+                                  {emp.matchScore}%
+                                </Badge>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Skill Match
+                                  </span>
+                                  <span className="font-medium">{emp.skillMatch}%</span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground flex items-center gap-1">
+                                    <Users className="h-3 w-3" />
+                                    Status
+                                  </span>
+                                  <Badge variant={emp.availability ? "default" : "destructive"} className="text-xs">
+                                    {emp.availability ? "Available" : "Unavailable"}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground flex items-center gap-1">
+                                    <TrendingUp className="h-3 w-3" />
+                                    Performance
+                                  </span>
+                                  <span className="font-medium">{emp.performance_score}%</span>
+                                </div>
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">Current Workload</span>
+                                  <Badge variant={emp.current_workload < 3 ? "outline" : emp.current_workload < 5 ? "secondary" : "destructive"}>
+                                    {emp.current_workload} tasks
+                                  </Badge>
+                                </div>
+                              </div>
+
+                              {emp.skills && emp.skills.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-xs text-muted-foreground mb-1">Skills:</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    {emp.skills.slice(0, 5).map((skill, i) => (
+                                      <Badge key={i} variant="outline" className="text-xs">
+                                        {skill}
+                                      </Badge>
+                                    ))}
+                                    {emp.skills.length > 5 && (
+                                      <Badge variant="outline" className="text-xs">
+                                        +{emp.skills.length - 5} more
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
+
+                        {topRecommendations.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p className="text-sm">No employees found matching the criteria</p>
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
+        </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="employee">Assign To *</Label>
-            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select an employee" />
-              </SelectTrigger>
-              <SelectContent>
-                {employees.map((emp) => (
-                  <SelectItem key={emp.user_id} value={emp.user_id}>
-                    {emp.profiles.full_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="flex gap-2 pt-4">
-            <Button onClick={handleSubmit} disabled={loading} className="flex-1">
-              {loading ? "Assigning..." : "Assign Task"}
-            </Button>
-            <Button variant="outline" onClick={onClose} disabled={loading}>
-              Cancel
-            </Button>
-          </div>
+        {/* Footer Actions */}
+        <div className="flex gap-2 pt-4 border-t">
+          <Button
+            onClick={form.handleSubmit(handleSubmit)}
+            disabled={loading || !form.watch("selectedEmployee")}
+            className="flex-1"
+          >
+            {loading ? "Assigning..." : "Assign Task"}
+          </Button>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Cancel
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -6,6 +6,8 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
+import { SkipNavigation } from "@/components/ui/skip-navigation";
+import { AccessibilityTester } from "./components/AccessibilityTester";
 
 const queryClient = new QueryClient();
 
@@ -14,6 +16,8 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <SkipNavigation />
+      <AccessibilityTester />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Dashboard />} />
