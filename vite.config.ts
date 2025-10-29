@@ -21,6 +21,12 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    assetsDir: 'assets',
+  },
+  base: process.env.NODE_ENV === 'production' ? './' : '/',
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
