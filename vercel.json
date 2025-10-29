@@ -1,6 +1,8 @@
 {
   "version": 3,
   "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "builds": [
     {
       "src": "package.json",
@@ -26,10 +28,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "server/api.js": {
-      "maxDuration": 30
-    }
   }
 }
