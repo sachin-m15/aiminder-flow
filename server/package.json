@@ -2,6 +2,7 @@
   "name": "aiminder-server",
   "version": "1.0.0",
   "type": "module",
+  "main": "api.js",
   "scripts": {
     "start": "node api.js",
     "dev": "node api.js"

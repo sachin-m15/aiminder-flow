@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: aiminder-backend
+    env: node
+    plan: free
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.com  # Update with your frontend URL
+    autoDeploy: true

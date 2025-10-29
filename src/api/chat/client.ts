@@ -19,8 +19,9 @@ export interface ChatResponse {
 export class ChatApiClient {
   private baseUrl: string;
 
-  constructor(baseUrl: string = '/api') {
-    this.baseUrl = baseUrl;
+  constructor(baseUrl?: string) {
+    // Use provided baseUrl, or environment variable, or fallback to '/api'
+    this.baseUrl = baseUrl || import.meta.env.VITE_CHATBOT_API_URL || '/api';
   }
 
   async sendMessage(messages: ChatMessage[], role: 'admin' | 'employee' = 'employee', authToken?: string): Promise<ChatResponse> {
