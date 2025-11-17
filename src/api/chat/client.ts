@@ -35,7 +35,7 @@ export class ChatApiClient {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch(`${this.baseUrl}/chat`, {
+      const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -63,7 +63,7 @@ export class ChatApiClient {
 
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await fetch(`${this.baseUrl}/api/health`);
       return response.ok;
     } catch (error) {
       console.error('Health check failed:', error);
