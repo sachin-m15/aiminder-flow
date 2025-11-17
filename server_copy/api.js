@@ -28,7 +28,7 @@ app.use(
         ? process.env.VERCEL_URL || "https://*.vercel.app"
         : process.env.NODE_ENV === "production"
         ? process.env.FRONTEND_URL
-        : "http://localhost:8080",
+        : process.env.FRONTEND_URL,
     credentials: true,
   })
 );

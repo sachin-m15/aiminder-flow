@@ -66,7 +66,7 @@ export const exampleTool = {
 ```env
 PORT=3001
 NODE_ENV=development
-FRONTEND_URL=http://localhost:8080
+FRONTEND_URL=$FRONTEND_URL
 AI_MODEL=gpt-4o-2024-11-20
 OPENAI_API_KEY=your_openai_key
 GOOGLE_GENERATIVE_AI_API_KEY=your_google_ai_key

@@ -42,7 +42,7 @@ VITE_AI_MODEL="gpt-4o-2024-11-20"
 OPENAI_API_KEY="your_actual_openai_api_key"
 PORT=3001
 NODE_ENV=development
-FRONTEND_URL=http://localhost:8080
+FRONTEND_URL=$FRONTEND_URL
 AI_MODEL=gpt-4o-2024-11-20
 ```
 
@@ -130,7 +130,7 @@ Test the API endpoints using:
 
 ```bash
 # Health check
-curl http://localhost:3001/api/health
+curl $API_URL/api/health
 
 # Chat test (using the test script)
 node test-api.js

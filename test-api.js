@@ -1,7 +1,7 @@
 // Simple test script to verify the API endpoint works
 const testApi = async () => {
   try {
-    const response = await fetch('http://localhost:3001/api/chat', {
+    const response = await fetch(`${process.env.API_URL}/api/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
