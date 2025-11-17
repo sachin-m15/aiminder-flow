@@ -423,19 +423,101 @@ export const getEmployeePerformance = tool({
 });
 
 /**
+ * Tool: Delete an employee from the system
+ */
+export const deleteEmployee = tool({
+  description: `Delete an employee from the system.
+  This is a destructive operation that will permanently remove the employee and all associated data.
+  IMPORTANT: Always ask for explicit confirmation first by asking "Are you sure you want to delete [employee name]? This action cannot be undone."
+  When the user confirms, call this tool again with confirmed: true.
+  The employee cannot be deleted if they have any active (non-completed) tasks.`,
+
+  inputSchema: z.object({
+    employeeId: z.string().uuid().optional().describe('The unique UUID of the employee to delete'),
+    employeeName: z.string().optional().describe('The name of the employee to delete (if ID not available)'),
+    confirmed: z.boolean().default(false).describe('Must be true to confirm deletion. Default is false - ask user for confirmation first before setting to true.'),
+  }).refine(data => data.employeeId || data.employeeName, {
+    message: 'Either employeeId or employeeName must be provided',
+  }),
+
+  execute: async ({ employeeId, employeeName, confirmed }) => {
+    try {
+      // Find the employee using helper
+      const employeeResult = await findEmployee(employeeId || employeeName!);
+
+      if (!employeeResult.success || !employeeResult.data) {
+        throw new Error(
+          'error' in employeeResult ? employeeResult.error : 'Employee not found'
+        );
+      }
+
+      const employee = employeeResult.data;
+
+      // Check for active tasks (non-completed)
+      const { data: activeTasks } = await supabase
+        .from('tasks')
+        .select('id, title, status')
+        .eq('assigned_to', employee.user_id)
+        .in('status', ['invited', 'accepted', 'ongoing']);
+
+      if (activeTasks && activeTasks.length > 0) {
+        const taskList = activeTasks.map(t => `"${t.title}" (${t.status})`).join(', ');
+        throw new Error(
+          `Cannot delete employee "${employee.full_name}" because they have ${activeTasks.length} active task(s): ${taskList}. Please complete or reassign these tasks first.`
+        );
+      }
+
+      // If not confirmed, ask for confirmation
+      if (!confirmed) {
+        return {
+          success: false,
+          error: 'Confirmation required',
+          details: `Please confirm that you want to delete employee "${employee.full_name}" (ID: ${employee.user_id}). This action cannot be undone and will permanently remove all employee data including skills, task history, and payment records.`,
+          missingFields: ['confirmation'],
+        };
+      }
+
+      // Delete employee profile (skills will be automatically deleted via foreign key constraints)
+      const { error: deleteError } = await supabase
+        .from('employee_profiles')
+        .delete()
+        .eq('user_id', employee.user_id);
+
+      if (deleteError) {
+        throw new Error(`Failed to delete employee: ${deleteError.message}`);
+      }
+
+      return {
+        success: true,
+        message: `Employee "${employee.full_name}" has been permanently deleted`,
+        data: {
+          deletedEmployeeId: employee.user_id,
+          employeeName: employee.full_name,
+          deletedAt: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error ? error.message : 'An unexpected error occurred while deleting the employee'
+      );
+    }
+  },
+});
+
+/**
  * Tool: Search employees by required skills
  */
 export const searchEmployeesBySkills = tool({
   description: `Find employees who have specific skills. Perfect for task assignment - helps find the right person for a job.
   Returns employees sorted by best match (skills, availability, and workload).
   Use this when assigning tasks or looking for someone with specific expertise.`,
-  
+
   inputSchema: z.object({
     requiredSkills: z.array(z.string()).min(1).describe('List of required skills to search for'),
     availability: z.boolean().optional().describe('Filter by availability - true to show only available employees'),
     limit: z.number().int().positive().optional().default(10).describe('Maximum number of results to return'),
   }),
-  
+
   execute: async ({ requiredSkills, availability, limit = 10 }) => {
     try {
       // Get all employees (or only available ones)

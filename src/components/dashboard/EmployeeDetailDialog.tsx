@@ -7,7 +7,18 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -27,6 +38,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import ErrorBoundary from "@/components/ui/error-boundary";
+import { useAuthStore } from "@/stores/authStore";
+import { chatApiClient } from "@/api/chat/client";
 
 interface EmployeeDetailDialogProps {
   employee: any;
@@ -35,9 +48,11 @@ interface EmployeeDetailDialogProps {
 }
 
 const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogProps) => {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
+   const [tasks, setTasks] = useState<any[]>([]);
+   const [isEditing, setIsEditing] = useState(false);
+   const [loading, setLoading] = useState(false);
+   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+   const [deleting, setDeleting] = useState(false);
 
   const form = useForm<EmployeeProfileFormData>({
     resolver: zodResolver(employeeProfileSchema),
@@ -104,6 +119,39 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
       skills: employee.skills || [],
     });
     setIsEditing(false);
+  };
+
+  const handleDeleteEmployee = () => {
+    const activeTasks = tasks.filter(t => t.status === 'ongoing' || t.status === 'accepted');
+    if (activeTasks.length > 0) {
+      toast.error(`Cannot delete employee. They have ${activeTasks.length} active task(s). Please complete or reassign them first.`);
+      return;
+    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const message = `Delete employee ${employee.profiles.full_name} with ID ${employee.user_id}, confirmed.`;
+      const result = await chatApiClient.sendMessage([{ role: 'user', content: message }], 'admin', session.access_token);
+
+      if (result.success) {
+        toast.success("Employee deleted successfully");
+        onClose();
+      } else {
+        throw new Error(result.error || "Failed to delete employee");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete employee";
+      toast.error(errorMessage);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
   };
 
   if (!employee) return null;
@@ -344,7 +392,33 @@ const EmployeeDetailDialog = ({ employee, open, onClose }: EmployeeDetailDialogP
             </div>
           </ScrollArea>
         </DialogContent>
+        <DialogFooter>
+          <Button
+            variant="destructive"
+            onClick={handleDeleteEmployee}
+            disabled={deleting}
+          >
+            Delete Employee
+          </Button>
+        </DialogFooter>
       </Dialog>
+
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Employee</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {employee.profiles.full_name}? This action cannot be undone and will permanently remove all employee data including skills, task history, and payment records.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={deleting}>
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ErrorBoundary>
   );
 };

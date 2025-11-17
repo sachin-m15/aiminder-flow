@@ -32,6 +32,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import ErrorBoundary from "@/components/ui/error-boundary";
+import AIPaymentService from "@/lib/ai-payment-service";
 
 // Schema for task editing
 const taskEditSchema = z.object({
@@ -319,10 +320,16 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
   const handleUpdateProgress = async (data: TaskProgressFormData) => {
     setLoading(true);
     try {
+      const isCompleting = data.progress === 100 && task.status !== "completed";
+
       // Update task progress
       const { error: taskError } = await supabase
         .from("tasks")
-        .update({ progress: data.progress, status: data.progress === 100 ? "completed" : "ongoing" })
+        .update({
+          progress: data.progress,
+          status: data.progress === 100 ? "completed" : "ongoing",
+          completed_at: data.progress === 100 ? new Date().toISOString() : null
+        })
         .eq("id", task.id);
 
       if (taskError) {
@@ -359,7 +366,21 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
         await uploadAttachments(insertedUpdate.id);
       }
 
-      toast.success("Task updated successfully");
+      // Trigger AI payment calculation for completed tasks
+      if (isCompleting) {
+        try {
+          console.log("Task completed, triggering AI payment calculation...");
+          await AIPaymentService.processTaskCompletion(task.id);
+          toast.success("🎉 Task completed! AI payment calculation initiated.");
+        } catch (aiError) {
+          console.error("AI payment calculation failed:", aiError);
+          // Don't fail the task completion, just log the error
+          toast.success("Task completed successfully (payment calculation will be processed manually)");
+        }
+      } else {
+        toast.success("Task updated successfully");
+      }
+
       form.reset();
 
       // Reload updates before closing
@@ -487,6 +508,7 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <DialogTitle className="text-2xl" id="task-dialog-title">{task.title}</DialogTitle>
+                <p className="text-sm text-muted-foreground mt-1">Task ID: {task.id}</p>
                 <div className="flex items-center gap-2 mt-2" aria-label={`Status: ${task.status}, Priority: ${task.priority}`}>
                   {getStatusBadge(task.status)}
                   {getPriorityBadge(task.priority)}

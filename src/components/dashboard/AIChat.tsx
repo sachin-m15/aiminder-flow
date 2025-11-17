@@ -30,10 +30,49 @@ const AIChat = ({ userRole }: AIChatProps) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
 
+  // Helper function to get user-specific localStorage key
+  const getStorageKey = (userId: string) => `ai-chat-messages-${userId}`;
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Load messages from localStorage when user changes
+  useEffect(() => {
+    if (!user?.id) {
+      setMessages([]);
+      return;
+    }
+
+    try {
+      const saved = localStorage.getItem(getStorageKey(user.id));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const messagesWithDates = parsed.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+        setMessages(messagesWithDates);
+      } else {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.warn('Failed to load chat messages from localStorage:', error);
+      setMessages([]);
+    }
+  }, [user?.id]);
+
+  // Save messages to localStorage whenever messages change
+  useEffect(() => {
+    if (!user?.id) return;
+
+    try {
+      localStorage.setItem(getStorageKey(user.id), JSON.stringify(messages));
+    } catch (error) {
+      console.warn('Failed to save chat messages to localStorage:', error);
+    }
+  }, [messages, user?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,7 +165,10 @@ const AIChat = ({ userRole }: AIChatProps) => {
   };
 
   const clearChat = () => {
+    if (!user?.id) return;
+
     setMessages([]);
+    localStorage.removeItem(getStorageKey(user.id));
     toast.success("Chat cleared");
   };
 
@@ -136,7 +178,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 flex-shrink-0">
           <div className="flex items-center space-x-2">
             <MessageCircle className="h-6 w-6" />
-            <CardTitle>AI Assistant</CardTitle>
+            <CardTitle className="relative">AI Assistant</CardTitle>
             <span className="text-sm text-muted-foreground">
               ({userRole} mode)
             </span>
@@ -146,7 +188,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
           </Button>
         </CardHeader>
 
-        <CardContent className="flex flex-col flex-1 space-y-4 p-0">
+        <CardContent className="flex flex-col flex-1 p-0 relative">
           {/* Messages Area - Takes most of the space */}
           <ScrollArea className="flex-1 rounded-lg border">
             <div className="p-4 space-y-4">
@@ -209,7 +251,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
           </ScrollArea>
 
           {/* Input Area - Fixed at bottom */}
-          <form onSubmit={handleSubmit} className="flex gap-2 p-4 pt-0 flex-shrink-0">
+          <form onSubmit={handleSubmit} className="sticky bottom-0 left-0 right-0 flex gap-2 p-4 bg-background border-t">
             <Input
               placeholder="Type your message..."
               value={input}

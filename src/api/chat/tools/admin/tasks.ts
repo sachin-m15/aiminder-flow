@@ -2,7 +2,7 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import type { ToolResponse } from '../shared/types';
-import { createErrorResponse, findEmployee, getEmployeeSkills, getTaskRequiredSkills, setTaskRequiredSkills } from '../shared/helpers';
+import { createErrorResponse, findEmployee, findTask, getEmployeeSkills, getTaskRequiredSkills, setTaskRequiredSkills } from '../shared/helpers';
 
 /**
  * Tool: Create a new task
@@ -459,54 +459,50 @@ export const updateTask = tool({
  */
 export const deleteTask = tool({
   description: `Delete a task from the system. 
-  CRITICAL: This is a destructive operation. ALWAYS ask for explicit confirmation before deleting.
-  Ask: "Are you sure you want to delete the task '[task title]'? This cannot be undone."`,
+  This is a destructive operation that will permanently remove the task and all associated updates.
+  IMPORTANT: Always ask for explicit confirmation first by asking "Are you sure you want to delete [task title]? This action cannot be undone."
+  When the user confirms, call this tool again with confirmed: true.`,
   
   inputSchema: z.object({
-    taskId: z.string().uuid().describe('The UUID of the task to delete'),
-    confirmed: z.boolean().default(false).describe('Must be true to confirm deletion. Always ask user for confirmation first.'),
+    // Accept either a UUID or a human-readable title so the agent can pass "Optimize Database Performance"
+    identifier: z.string().min(1).describe('Task ID (UUID) or task title to identify the task'),
+    confirmed: z.boolean().default(false).describe('Must be true to confirm deletion. Default is false - ask user for confirmation first before setting to true.'),
   }),
-  
-  execute: async ({ taskId, confirmed }): Promise<ToolResponse> => {
-    try {
-      // Get task details first
-      const { data: task, error: fetchError } = await supabase
-        .from('tasks')
-        .select('id, title, assigned_to, status')
-        .eq('id', taskId)
-        .single();
 
-      if (fetchError || !task) {
-        return createErrorResponse(
-          `Task with ID "${taskId}" not found`,
-          'Please verify the task ID'
-        );
+  execute: async ({ identifier, confirmed }): Promise<ToolResponse> => {
+    try {
+      // Resolve identifier (could be title or UUID) using helper
+      const found = await findTask(identifier);
+
+      if (!found.success) {
+        // If helper returned a helpful clarification (e.g., multiple matches), forward that response directly
+        return found;
       }
 
-      // Require confirmation
+      const task = found.data;
+
+      if (!task || !task.id) {
+        throw new Error(`Task matching "${identifier}" not found. Please verify the task title or ID.`);
+      }
+
+      // If not confirmed, ask for confirmation and include the resolved title for clarity
       if (!confirmed) {
-        return createErrorResponse(
-          `Deletion requires confirmation`,
-          `Task "${task.title}" will be permanently deleted`,
-          [
-            'This action cannot be undone',
-            'All task updates and attachments will also be deleted',
-            'Please confirm if you want to proceed',
-          ]
-        );
+        return {
+          success: false,
+          error: 'Confirmation required',
+          details: `Please confirm that you want to delete the task "${task.title}" (id: ${task.id}). This action cannot be undone and will permanently remove all task updates and history.`,
+          missingFields: ['confirmation'],
+        };
       }
 
       // Delete task (cascades to task_updates and task_required_skills due to foreign key)
       const { error: deleteError } = await supabase
         .from('tasks')
         .delete()
-        .eq('id', taskId);
+        .eq('id', task.id);
 
       if (deleteError) {
-        return createErrorResponse(
-          'Failed to delete task',
-          deleteError.message
-        );
+        throw new Error(`Failed to delete task: ${deleteError.message}`);
       }
 
       // Update employee workload if task was active
@@ -531,7 +527,7 @@ export const deleteTask = tool({
         success: true,
         message: `Task "${task.title}" has been permanently deleted`,
         data: {
-          deletedTaskId: taskId,
+          deletedTaskId: task.id,
           taskTitle: task.title,
         },
       };
@@ -678,11 +674,12 @@ export const getTaskDetails = tool({
         .eq('id', taskId)
         .single();
 
-      if (taskError || !task) {
-        return createErrorResponse(
-          `Task with ID "${taskId}" not found`,
-          'Please verify the task ID'
-        );
+      if (taskError) {
+        throw new Error(`Failed to retrieve task details: ${taskError.message}`);
+      }
+
+      if (!task) {
+        throw new Error(`Task with ID "${taskId}" not found. Please verify the task ID and try again.`);
       }
 
       // Get assignee info
@@ -774,9 +771,8 @@ export const getTaskDetails = tool({
         },
       };
     } catch (error) {
-      return createErrorResponse(
-        'An unexpected error occurred while fetching task details',
-        error instanceof Error ? error.message : 'Unknown error'
+      throw new Error(
+        error instanceof Error ? error.message : 'An unexpected error occurred while fetching task details'
       );
     }
   },

@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { tool } from "langchain";
 import { supabase } from "../../supabase.js";
-import { findEmployee } from "../shared/helpers.js";
+import { findEmployee, getTaskRequiredSkills } from "../shared/helpers.js";
 
 export const listTasks = tool(
   async ({ status, priority, assignedTo, overdue, limit = 20 } = {}) => {
@@ -152,5 +152,157 @@ export const listTasks = tool(
     returnType: z
       .string()
       .describe("A formatted, human-readable list of tasks"),
+  }
+);
+
+/**
+ * Tool: Get details for a single task
+ */
+export const getTaskDetails = tool(
+  async ({ taskId }) => {
+    try {
+      if (!taskId) throw new Error("taskId is required");
+
+      const { data: task, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .eq("id", taskId)
+        .single();
+
+      if (error || !task) {
+        throw new Error("Task not found");
+      }
+
+      // Get assignee details
+      let assignee = null;
+      if (task.assigned_to) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .eq("id", task.assigned_to)
+          .single();
+        assignee = profile || null;
+      }
+
+      // Get required skills
+      const skills = await getTaskRequiredSkills(taskId);
+
+      // Get recent updates
+      const { data: updates } = await supabase
+        .from("task_updates")
+        .select("*")
+        .eq("task_id", taskId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      const safeUpdates = updates || [];
+
+      return {
+        ...task,
+        assignee,
+        requiredSkills: skills,
+        recentUpdates: safeUpdates,
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while fetching task details"
+      );
+    }
+  },
+  {
+    name: "get_task_details",
+    description: "Get comprehensive details for a single task by its ID.",
+    schema: z.object({
+      taskId: z.string().uuid().describe("The unique ID of the task to fetch"),
+    }),
+  }
+);
+
+/**
+ * Tool: Delete a task
+ */
+export const deleteTask = tool(
+  async ({ taskId, confirmed }) => {
+    try {
+      console.log("🗑️ Delete Task Called:", { taskId, confirmed });
+      
+      if (!taskId) throw new Error("taskId is required");
+      
+      // Require explicit confirmation for safety
+      if (!confirmed) {
+        throw new Error("Task deletion requires explicit confirmation. Please set confirmed=true to proceed.");
+      }
+
+      // Get task details first for logging
+      const { data: task } = await supabase
+        .from("tasks")
+        .select("id, title, assigned_to, status")
+        .eq("id", taskId)
+        .single();
+
+      if (!task) {
+        throw new Error(`Task with ID "${taskId}" not found`);
+      }
+
+      // Note: Supabase RLS policies should handle cascading deletes (e.g., skills, updates)
+      const { error } = await supabase.from("tasks").delete().eq("id", taskId);
+
+      if (error) {
+        throw new Error(`Failed to delete task: ${error.message}`);
+      }
+
+      // Update employee workload if task was active
+      // (try/catch so we don't fail deletion just because workload update failed)
+      try {
+        if (
+          task?.assigned_to &&
+          task?.status &&
+          !["completed", "rejected"].includes(task.status)
+        ) {
+          const { data: employee } = await supabase
+            .from("employee_profiles")
+            .select("current_workload")
+            .eq("user_id", task.assigned_to)
+            .single();
+
+          if (employee) {
+            await supabase
+              .from("employee_profiles")
+              .update({
+                current_workload: Math.max(
+                  0,
+                  (employee.current_workload || 0) - 1
+                ),
+              })
+              .eq("user_id", task.assigned_to);
+          }
+        }
+      } catch (e) {
+        // ignore workload update error
+        console.warn("Failed to update workload after delete:", e);
+      }
+
+      return {
+        success: true,
+        message: `Successfully deleted task "${task.title}" [${taskId.slice(0, 8)}].`,
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while deleting task"
+      );
+    }
+  },
+  {
+    name: "delete_task",
+    description:
+      "Permanently delete a task from the system. This action cannot be undone. Requires confirmation parameter.",
+    schema: z.object({
+      taskId: z.string().uuid().describe("The unique ID of the task to delete"),
+      confirmed: z.boolean().describe("Must be true to confirm deletion. This is a destructive operation."),
+    }),
   }
 );

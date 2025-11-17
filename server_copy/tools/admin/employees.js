@@ -1,5 +1,5 @@
 // Server-side employee management tools
-import { tool } from 'ai';
+import { tool } from 'langchain'; // <-- CORRECTED IMPORT
 import { z } from 'zod';
 import { supabase } from '../../supabase.js';
 import { 
@@ -12,20 +12,8 @@ import {
 /**
  * Tool: List all employees with optional filters
  */
-export const listEmployees = tool({
-  description: `Get a comprehensive list of all employees with optional filters. 
-  Use this when the user asks to "show employees", "list staff", "who works here", etc.
-  You can filter by department, designation, availability, or search by name/skills.`,
-  
-  inputSchema: z.object({
-    department: z.string().optional().describe('Filter by department (e.g., "Engineering", "Design", "Marketing")'),
-    designation: z.string().optional().describe('Filter by job title/designation (e.g., "Senior Developer", "Designer")'),
-    availability: z.boolean().optional().describe('Filter by availability status - true for available, false for unavailable'),
-    searchQuery: z.string().optional().describe('Search employees by name or email (case-insensitive partial match)'),
-    skills: z.array(z.string()).optional().describe('Filter by required skills (employees must have ALL specified skills)'),
-  }),
-  
-  execute: async ({ department, designation, availability, searchQuery, skills }) => {
+export const listEmployees = tool(
+  async ({ department, designation, availability, searchQuery, skills }) => {
     try {
       // Get all employee profiles first
       let query = supabase
@@ -132,24 +120,27 @@ export const listEmployees = tool({
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'listEmployees',
+    description: `Get a comprehensive list of all employees with optional filters. 
+    Use this when the user asks to "show employees", "list staff", "who works here", etc.
+    You can filter by department, designation, availability, or search by name/skills.`,
+    
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      department: z.string().optional().describe('Filter by department (e.g., "Engineering", "Design", "Marketing")'),
+      designation: z.string().optional().describe('Filter by job title/designation (e.g., "Senior Developer", "Designer")'),
+      availability: z.boolean().optional().describe('Filter by availability status - true for available, false for unavailable'),
+      searchQuery: z.string().optional().describe('Search employees by name or email (case-insensitive partial match)'),
+      skills: z.array(z.string()).optional().describe('Filter by required skills (employees must have ALL specified skills)'),
+    }),
+  }
+);
 
 /**
  * Tool: Get detailed information about a specific employee
  */
-export const getEmployeeDetails = tool({
-  description: `Get comprehensive details about a specific employee including their profile, current tasks, performance metrics, and payment history.
-  Use this when the user asks for details about a specific employee, their workload, performance, etc.
-  If you have the employee ID, use it. Otherwise, search by name.`,
-  
-  inputSchema: z.object({
-    employeeId: z.string().uuid().optional().describe('The unique UUID of the employee'),
-    employeeName: z.string().optional().describe('The name of the employee to search for (if ID not available)'),
-  }).refine(data => data.employeeId || data.employeeName, {
-    message: 'Either employeeId or employeeName must be provided',
-  }),
-  
-  execute: async ({ employeeId, employeeName }) => {
+export const getEmployeeDetails = tool(
+  async ({ employeeId, employeeName }) => {
     try {
       // Find the employee using helper
       const employeeResult = await findEmployee(employeeId || employeeName);
@@ -219,30 +210,26 @@ export const getEmployeeDetails = tool({
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'getEmployeeDetails',
+    description: `Get comprehensive details about a specific employee including their profile, current tasks, performance metrics, and payment history.
+    Use this when the user asks for details about a specific employee, their workload, performance, etc.
+    If you have the employee ID, use it. Otherwise, search by name.`,
+    
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      employeeId: z.string().uuid().optional().describe('The unique UUID of the employee'),
+      employeeName: z.string().optional().describe('The name of the employee to search for (if ID not available)'),
+    }).refine(data => data.employeeId || data.employeeName, {
+      message: 'Either employeeId or employeeName must be provided',
+    }),
+  }
+);
 
 /**
  * Tool: Update employee profile information
  */
-export const updateEmployee = tool({
-  description: `Update an employee's profile information such as department, designation, hourly rate, skills, or availability.
-  IMPORTANT: Always confirm the changes with the user before updating.
-  Ask for confirmation if making significant changes (e.g., changing hourly rate, department).`,
-  
-  inputSchema: z.object({
-    employeeId: z.string().uuid().describe('The unique UUID of the employee to update'),
-    updates: z.object({
-      department: z.string().optional().describe('New department'),
-      designation: z.string().optional().describe('New job title/designation'),
-      hourlyRate: z.number().positive().optional().describe('New hourly rate in USD'),
-      skills: z.array(z.string()).optional().describe('Updated list of skills (replaces existing)'),
-      availability: z.boolean().optional().describe('Availability status'),
-    }).refine(data => Object.keys(data).length > 0, {
-      message: 'At least one field must be provided to update',
-    }),
-  }),
-  
-  execute: async ({ employeeId, updates }) => {
+export const updateEmployee = tool(
+  async ({ employeeId, updates }) => {
     try {
       // First, verify employee exists and get profile ID
       const { data: existing, error: fetchError } = await supabase
@@ -308,21 +295,32 @@ export const updateEmployee = tool({
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'updateEmployee',
+    description: `Update an employee's profile information such as department, designation, hourly rate, skills, or availability.
+    IMPORTANT: Always confirm the changes with the user before updating.
+    Ask for confirmation if making significant changes (e.g., changing hourly rate, department).`,
+    
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      employeeId: z.string().uuid().describe('The unique UUID of the employee to update'),
+      updates: z.object({
+        department: z.string().optional().describe('New department'),
+        designation: z.string().optional().describe('New job title/designation'),
+        hourlyRate: z.number().positive().optional().describe('New hourly rate in USD'),
+        skills: z.array(z.string()).optional().describe('Updated list of skills (replaces existing)'),
+        availability: z.boolean().optional().describe('Availability status'),
+      }).refine(data => Object.keys(data).length > 0, {
+        message: 'At least one field must be provided to update',
+      }),
+    }),
+  }
+);
 
 /**
  * Tool: Get employee performance metrics
  */
-export const getEmployeePerformance = tool({
-  description: `Get detailed performance metrics for an employee including completion rate, on-time delivery, quality scores, and workload analysis.
-  Use this to evaluate employee performance, answer questions about productivity, or generate performance reports.`,
-  
-  inputSchema: z.object({
-    employeeId: z.string().uuid().describe('The unique UUID of the employee'),
-    timeRange: z.enum(['week', 'month', 'quarter', 'year', 'all']).optional().default('month').describe('Time period for metrics calculation'),
-  }),
-  
-  execute: async ({ employeeId, timeRange = 'month' }) => {
+export const getEmployeePerformance = tool(
+  async ({ employeeId, timeRange = 'month' }) => {
     try {
       // Get employee basic info using helper
       const employeeResult = await findEmployee(employeeId);
@@ -427,42 +425,34 @@ export const getEmployeePerformance = tool({
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'getEmployeePerformance',
+    description: `Get detailed performance metrics for an employee including completion rate, on-time delivery, quality scores, and workload analysis.
+    Use this to evaluate employee performance, answer questions about productivity, or generate performance reports.`,
+    
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      employeeId: z.string().uuid().describe('The unique UUID of the employee'),
+      timeRange: z.enum(['week', 'month', 'quarter', 'year', 'all']).optional().default('month').describe('Time period for metrics calculation'),
+    }),
+  }
+);
 
 /**
  * Tool: Delete an employee from the system
  */
-export const deleteEmployee = tool({
-  description: `Delete an employee from the system.
-  This is a destructive operation that will permanently remove the employee and all associated data.
-  IMPORTANT: Always ask for explicit confirmation first by asking "Are you sure you want to delete [employee name]? This action cannot be undone."
-  When the user confirms, call this tool again with confirmed: true.
-  The employee cannot be deleted if they have any active (non-completed) tasks.`,
-
-  inputSchema: z.object({
-    employeeId: z.string().uuid().optional().describe('The unique UUID of the employee to delete'),
-    employeeName: z.string().optional().describe('The name of the employee to delete (if ID not available)'),
-    confirmed: z.boolean().default(false).describe('Must be true to confirm deletion. Default is false - ask user for confirmation first before setting to true.'),
-  }).refine(data => data.employeeId || data.employeeName, {
-    message: 'Either employeeId or employeeName must be provided',
-  }),
-
-  execute: async ({ employeeId, employeeName, confirmed }) => {
-    console.log('🗑️ Delete Employee Called:', { employeeId, employeeName, confirmed });
-
+export const deleteEmployee = tool(
+  async ({ employeeId, employeeName, confirmed }) => {
     try {
       // Find the employee using helper
       const employeeResult = await findEmployee(employeeId || employeeName);
 
       if (!employeeResult.success || !employeeResult.data) {
-        console.log('❌ Employee not found:', employeeResult);
         throw new Error(
           'error' in employeeResult ? employeeResult.error : 'Employee not found'
         );
       }
 
       const employee = employeeResult.data;
-      console.log('👤 Found employee:', employee.full_name, employee.user_id);
 
       // Check for active tasks (non-completed)
       const { data: activeTasks } = await supabase
@@ -471,11 +461,8 @@ export const deleteEmployee = tool({
         .eq('assigned_to', employee.user_id)
         .in('status', ['invited', 'accepted', 'ongoing']);
 
-      console.log('📋 Active tasks check:', activeTasks?.length || 0, 'tasks found');
-
       if (activeTasks && activeTasks.length > 0) {
         const taskList = activeTasks.map(t => `"${t.title}" (${t.status})`).join(', ');
-        console.log('❌ Cannot delete - active tasks:', taskList);
         throw new Error(
           `Cannot delete employee "${employee.full_name}" because they have ${activeTasks.length} active task(s): ${taskList}. Please complete or reassign these tasks first.`
         );
@@ -483,7 +470,6 @@ export const deleteEmployee = tool({
 
       // If not confirmed, ask for confirmation
       if (!confirmed) {
-        console.log('⚠️ Confirmation required for employee deletion');
         return {
           success: false,
           error: 'Confirmation required',
@@ -492,8 +478,6 @@ export const deleteEmployee = tool({
         };
       }
 
-      console.log('✅ Confirmation received, proceeding with deletion');
-
       // Delete employee profile (skills will be automatically deleted via foreign key constraints)
       const { error: deleteError } = await supabase
         .from('employee_profiles')
@@ -501,11 +485,9 @@ export const deleteEmployee = tool({
         .eq('user_id', employee.user_id);
 
       if (deleteError) {
-        console.log('❌ Delete error:', deleteError);
         throw new Error(`Failed to delete employee: ${deleteError.message}`);
       }
 
-      console.log('✅ Employee deleted successfully:', employee.full_name);
       return {
         success: true,
         message: `Employee "${employee.full_name}" has been permanently deleted`,
@@ -516,29 +498,34 @@ export const deleteEmployee = tool({
         },
       };
     } catch (error) {
-      console.log('❌ Delete employee error:', error.message);
       throw new Error(
         error instanceof Error ? error.message : 'An unexpected error occurred while deleting the employee'
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'deleteEmployee',
+    description: `Delete an employee from the system.
+    This is a destructive operation that will permanently remove the employee and all associated data.
+    IMPORTANT: Always ask for explicit confirmation first by asking "Are you sure you want to delete [employee name]? This action cannot be undone."
+    When the user confirms, call this tool again with confirmed: true.
+    The employee cannot be deleted if they have any active (non-completed) tasks.`,
+
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      employeeId: z.string().uuid().optional().describe('The unique UUID of the employee to delete'),
+      employeeName: z.string().optional().describe('The name of the employee to delete (if ID not available)'),
+      confirmed: z.boolean().default(false).describe('Must be true to confirm deletion. Default is false - ask user for confirmation first before setting to true.'),
+    }).refine(data => data.employeeId || data.employeeName, {
+      message: 'Either employeeId or employeeName must be provided',
+    }),
+  }
+);
 
 /**
  * Tool: Search employees by required skills
  */
-export const searchEmployeesBySkills = tool({
-  description: `Find employees who have specific skills. Perfect for task assignment - helps find the right person for a job.
-  Returns employees sorted by best match (skills, availability, and workload).
-  Use this when assigning tasks or looking for someone with specific expertise.`,
-
-  inputSchema: z.object({
-    requiredSkills: z.array(z.string()).min(1).describe('List of required skills to search for'),
-    availability: z.boolean().optional().describe('Filter by availability - true to show only available employees'),
-    limit: z.number().int().positive().optional().default(10).describe('Maximum number of results to return'),
-  }),
-
-  execute: async ({ requiredSkills, availability, limit = 10 }) => {
+export const searchEmployeesBySkills = tool(
+  async ({ requiredSkills, availability, limit = 10 }) => {
     try {
       // Get all employees (or only available ones)
       let query = supabase
@@ -649,4 +636,16 @@ export const searchEmployeesBySkills = tool({
       );
     }
   },
-});
+  { // <-- Refactored to LangChain options object
+    name: 'searchEmployeesBySkills',
+    description: `Find employees who have specific skills. Perfect for task assignment - helps find the right person for a job.
+    Returns employees sorted by best match (skills, availability, and workload).
+    Use this when assigning tasks or looking for someone with specific expertise.`,
+
+    schema: z.object({ // <-- 'inputSchema' changed to 'schema'
+      requiredSkills: z.array(z.string()).min(1).describe('List of required skills to search for'),
+      availability: z.boolean().optional().describe('Filter by availability - true to show only available employees'),
+      limit: z.number().int().positive().optional().default(10).describe('Maximum number of results to return'),
+    }),
+  }
+);

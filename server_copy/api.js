@@ -13,9 +13,9 @@ import {
   AIMessage,
   SystemMessage,
 } from "@langchain/core/messages";
-import { getToolsForRole } from "./tools/index.js";
+import { getToolsForRole } from "./tools/index.js"; // <-- Correctly imported
 import { supabase } from "./supabase.js";
-// import { listTasks } from "./tools/admin/tasks.js"; // No longer needed - using getToolsForRole instead
+// import { listTasks } from "./tools/admin/tasks.js"; // <-- No longer needed
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -24,7 +24,7 @@ const port = process.env.PORT || 3001;
 app.use(
   cors({
     origin:
-      process.env.VERCEL === '1'
+      process.env.VERCEL === "1"
         ? process.env.VERCEL_URL || "https://*.vercel.app"
         : process.env.NODE_ENV === "production"
         ? process.env.FRONTEND_URL
@@ -88,17 +88,14 @@ const authenticateToken = async (req, res, next) => {
 
 // Initialize AI models
 const openai = new ChatOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  model: process.env.AI_MODEL || "zai-org/GLM-4.5-turbo",
+  apiKey: process.env.OPENAI_API_KEY, // <-- ✅ THIS IS THE FIX
+  model: process.env.AI_MODEL,
   temperature: 0.7,
-  configuration: {
-    baseURL: "https://llm.chutes.ai/v1",
-  },
 });
 
 const googleAI = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
-  model: "gemini-2.5-flash",
+  model: "gemini-flash-latest", // Using 1.5-flash for better tool use
   temperature: 0.7,
 });
 
@@ -121,11 +118,6 @@ Example format for task listings:
   - ⏰ Deadline: October 27, 2025 (⚠️ OVERDUE)
   - 📅 Created: October 25, 2025
 
-• **Create Design System Components** (⚖️ Medium Priority) - Status: Ongoing (45% complete)
-  - 👤 Assigned to: Developer
-  - ⏰ Deadline: November 4, 2025
-  - 📅 Created: October 25, 2025
-
 **Summary:** Found 3 tasks total, 1 overdue task requiring immediate attention.
 
 Always provide context and recommendations based on the data.`,
@@ -138,10 +130,11 @@ IMPORTANT: When you use tools and get results, you MUST:
 4. Use markdown formatting for better readability
 5. Never return raw JSON data directly to the user`,
 };
+
 // Agent registry for different roles
 const agents = new Map();
 
-function getAgent(role, userId = null) {
+function getAgent(role, userId) {
   // Create a unique key for the user's role and ID
   const agentKey = `${role}:${userId || "default"}`;
 
@@ -169,22 +162,19 @@ IMPORTANT: When you use tools and get results, you MUST:
 
     // Get tools for the role and convert to array format
     const toolsObject = getToolsForRole(role);
-    const toolsArray = Object.values(toolsObject);
-
-    // Log available tools for debugging
-    console.log(`🤖 Available tools for ${role}:`, toolsArray.map(t => t.name || t));
+    const toolsArray = Object.values(toolsObject); // <-- This is the fix
 
     // Create agent with proper tools
     const agent = createAgent({
-      model: googleAI,
-      tools: toolsArray, // ✅ Include all tools, not just listTasks
+      model: openai, // <-- This was already correct
+      tools: toolsArray, // <-- Use the tools from getToolsForRole
       systemPrompt: finalSystemPrompt,
       maxSteps: 5,
     });
 
-    agents.set(agentKey, { agent, userId });
+    agents.set(agentKey, agent);
   }
-  return agents.get(agentKey).agent;
+  return agents.get(agentKey);
 }
 
 // Health check endpoint
@@ -198,6 +188,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
     const { messages, role: requestedRole } = req.body;
     // Use the role from the request body, fallback to authenticated user's role
     const role = requestedRole || req.user.role;
+    const userId = req.user.id; // <-- Get the user's ID
 
     if (!messages || !Array.isArray(messages)) {
       return res.status(400).json({ error: "Messages array is required" });
@@ -205,14 +196,14 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
 
     console.log("🤖 Server-side AI Agent - Processing request:", {
       role,
-      userId: req.user.id,
+      userId, // <-- Log the user ID
       userEmail: req.user.email,
       userRole: req.user.role,
       messageCount: messages.length,
       timestamp: new Date().toISOString(),
     });
 
-    const agent = getAgent(role);
+    const agent = getAgent(role, userId); // <-- Pass role AND userId
 
     // Convert messages to LangChain format
     const langchainMessages = messages.map((msg) => {
@@ -233,7 +224,7 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
       },
       {
         configurable: {
-          user: req.user, // ✅ pass user context to tools
+          user: req.user, // ✅ pass user context in configurable
         },
         callbacks: [
           {
@@ -273,11 +264,13 @@ app.post("/api/chat", authenticateToken, async (req, res) => {
 });
 
 // Start server only if not in Vercel environment
-if (process.env.VERCEL !== '1') {
+if (process.env.VERCEL !== "1") {
   app.listen(port, () => {
     console.log(`🚀 API server running on port ${port}`);
     console.log(
-      `🔐 OpenAI API key configured: ${process.env.OPENAI_API_KEY ? "Yes" : "No"}`
+      `🔐 OpenAI API key configured: ${
+        process.env.OPENAI_API_KEY ? "Yes" : "No"
+      }`
     );
   });
 }

@@ -189,7 +189,7 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
   const rowVirtualizer = useVirtualizer({
     count: filteredEmployees.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 60,
+    estimateSize: () => 150,
     overscan: 5,
   });
 
@@ -244,7 +244,7 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
                     return (
                       <div
                         key={employee.user_id}
-                        className="grid grid-cols-7 gap-4 px-4 py-3 border-b cursor-pointer hover:bg-muted/50 transition-colors items-center"
+                        className="grid grid-cols-7 gap-4 px-4 py-4 border-b cursor-pointer hover:bg-muted/50 transition-colors items-center"
                         onClick={() => setSelectedEmployee(employee)}
                         style={{
                           position: 'absolute',
@@ -257,6 +257,7 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
                       >
                         <div>
                           <p className="font-medium text-sm">{employee.profiles.full_name}</p>
+                          <p className="text-xs text-muted-foreground">ID: {employee.user_id}</p>
                           <p className="text-xs text-muted-foreground">{employee.profiles.email}</p>
                         </div>
                         <div>

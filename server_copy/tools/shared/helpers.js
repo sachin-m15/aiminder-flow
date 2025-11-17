@@ -8,15 +8,15 @@ export async function getEmployeeSkills(employeeProfileId) {
   try {
     const { data: skills, error } = await supabase
       .from('employee_skills')
-      .select('skill')
-      .eq('employee_id', employeeProfileId);
+      .select('skill_name')
+      .eq('employee_profile_id', employeeProfileId);
 
     if (error) {
       console.error('Error fetching employee skills:', error);
       return [];
     }
 
-    return skills.map(s => s.skill);
+    return skills.map(s => s.skill_name);
   } catch (error) {
     console.error('Error in getEmployeeSkills:', error);
     return [];
@@ -32,7 +32,7 @@ export async function setEmployeeSkills(employeeProfileId, skills) {
     const { error: deleteError } = await supabase
       .from('employee_skills')
       .delete()
-      .eq('employee_id', employeeProfileId);
+      .eq('employee_profile_id', employeeProfileId);
 
     if (deleteError) {
       return { success: false, error: deleteError.message };
@@ -41,8 +41,8 @@ export async function setEmployeeSkills(employeeProfileId, skills) {
     // Insert new skills
     if (skills.length > 0) {
       const skillsToInsert = skills.map(skill => ({
-        employee_id: employeeProfileId,
-        skill: skill.trim()
+        employee_profile_id: employeeProfileId,
+        skill_name: skill.trim()
       }));
 
       const { error: insertError } = await supabase

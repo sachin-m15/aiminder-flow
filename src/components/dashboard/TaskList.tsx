@@ -215,7 +215,10 @@ const TaskList = ({ isAdmin, searchQuery = "" }: TaskListProps) => {
                 >
                   <CardHeader className="p-4 pb-3">
                     <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base line-clamp-2 flex-1">{task.title}</CardTitle>
+                      <div className="flex-1">
+                        <CardTitle className="text-base line-clamp-2">{task.title}</CardTitle>
+                        <p className="text-xs text-muted-foreground mt-1">Task ID: {task.id}</p>
+                      </div>
                       {getStatusBadge(task.status)}
                     </div>
                     <p className="text-xs text-muted-foreground line-clamp-2 mt-1.5">
