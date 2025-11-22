@@ -8,15 +8,15 @@ export async function getEmployeeSkills(employeeProfileId) {
   try {
     const { data: skills, error } = await supabase
       .from('employee_skills')
-      .select('skill_name')
-      .eq('employee_profile_id', employeeProfileId);
+      .select('skill')
+      .eq('employee_id', employeeProfileId);
 
     if (error) {
       console.error('Error fetching employee skills:', error);
       return [];
     }
 
-    return skills.map(s => s.skill_name);
+    return skills.map(s => s.skill);
   } catch (error) {
     console.error('Error in getEmployeeSkills:', error);
     return [];
@@ -32,7 +32,7 @@ export async function setEmployeeSkills(employeeProfileId, skills) {
     const { error: deleteError } = await supabase
       .from('employee_skills')
       .delete()
-      .eq('employee_profile_id', employeeProfileId);
+      .eq('employee_id', employeeProfileId);
 
     if (deleteError) {
       return { success: false, error: deleteError.message };
@@ -41,8 +41,8 @@ export async function setEmployeeSkills(employeeProfileId, skills) {
     // Insert new skills
     if (skills.length > 0) {
       const skillsToInsert = skills.map(skill => ({
-        employee_profile_id: employeeProfileId,
-        skill_name: skill.trim()
+        employee_id: employeeProfileId,
+        skill: skill.trim()
       }));
 
       const { error: insertError } = await supabase
@@ -174,7 +174,7 @@ export async function getTaskRequiredSkills(taskId) {
   try {
     const { data: skills, error } = await supabase
       .from('task_required_skills')
-      .select('skill_name')
+      .select('skill')
       .eq('task_id', taskId);
 
     if (error) {
@@ -182,7 +182,7 @@ export async function getTaskRequiredSkills(taskId) {
       return [];
     }
 
-    return skills.map(s => s.skill_name);
+    return skills.map(s => s.skill);
   } catch (error) {
     console.error('Error in getTaskRequiredSkills:', error);
     return [];
@@ -208,7 +208,7 @@ export async function setTaskRequiredSkills(taskId, skills) {
     if (skills.length > 0) {
       const skillsToInsert = skills.map(skill => ({
         task_id: taskId,
-        skill_name: skill.trim()
+        skill: skill.trim()
       }));
 
       const { error: insertError } = await supabase
