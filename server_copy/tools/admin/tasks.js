@@ -251,29 +251,40 @@ export const analyzeAndPlanTask = tool(
 
           const empSkills = await getEmployeeSkills(emp.id);
 
-          // Count matching skills (case-insensitive)
-          const matchingSkills = analysis.requiredSkills.filter(reqSkill =>
+          // Count exact/partial matching skills (case-insensitive)
+          const exactMatchingSkills = analysis.requiredSkills.filter(reqSkill =>
             empSkills.some(empSkill =>
               empSkill.toLowerCase().includes(reqSkill.toLowerCase()) ||
               reqSkill.toLowerCase().includes(empSkill.toLowerCase())
             )
           );
 
-          const skillMatchCount = matchingSkills.length;
+          // Count somewhat related skills (broader matching)
+          const relatedSkills = analysis.requiredSkills.filter(reqSkill => {
+            const reqLower = reqSkill.toLowerCase();
+            return empSkills.some(empSkill => {
+              const empLower = empSkill.toLowerCase();
+              // Check for related terms (e.g., "web" relates to "frontend", "backend", etc.)
+              return empLower.includes('web') && (reqLower.includes('frontend') || reqLower.includes('backend') || reqLower.includes('ui') || reqLower.includes('ux')) ||
+                     empLower.includes('design') && (reqLower.includes('ui') || reqLower.includes('ux') || reqLower.includes('graphic')) ||
+                     empLower.includes('data') && reqLower.includes('analytics') ||
+                     empLower.includes('mobile') && (reqLower.includes('app') || reqLower.includes('ios') || reqLower.includes('android'));
+            });
+          });
+
+          const skillMatchCount = exactMatchingSkills.length;
+          const relatedSkillCount = relatedSkills.length;
           const skillMatchPercentage = analysis.requiredSkills.length > 0
             ? (skillMatchCount / analysis.requiredSkills.length) * 100
             : 0;
 
-          // Calculate overall score (skills * 50% + performance * 30% + workload * 20%)
-          const performanceScore = (emp.performance_score || 0) * 20; // Max 100
-          const workloadScore = Math.max(0, 100 - (emp.current_workload || 0) * 20); // Lower workload = higher score
-          const skillScore = skillMatchPercentage * 0.5;
+          // Calculate overall score (skills * 40% + related skills * 20% + performance * 25% + workload * 15%)
+          const performanceScore = (emp.performance_score || 0) * 25; // Max 100
+          const workloadScore = Math.max(0, 100 - (emp.current_workload || 0) * 15); // Lower workload = higher score
+          const skillScore = skillMatchPercentage * 0.4;
+          const relatedSkillScore = (relatedSkillCount / analysis.requiredSkills.length) * 100 * 0.2;
 
-          const totalScore = (
-            skillScore +
-            performanceScore * 0.3 +
-            workloadScore * 0.2
-          );
+          const totalScore = skillScore + relatedSkillScore + performanceScore + workloadScore;
 
           return {
             id: emp.user_id,
@@ -287,18 +298,22 @@ export const analyzeAndPlanTask = tool(
             performanceScore: emp.performance_score || 0,
             hourlyRate: emp.hourly_rate,
             skillMatchCount,
+            relatedSkillCount,
             skillMatchPercentage: Math.round(skillMatchPercentage),
             overallScore: Math.round(totalScore),
-            matchingSkills
+            matchingSkills: exactMatchingSkills,
+            relatedSkills,
+            matchType: skillMatchCount > 0 ? 'exact' : relatedSkillCount > 0 ? 'related' : 'general'
           };
         })
       );
 
-      // Filter and sort
-      const scoredEmployees = employeesWithScores
-        .filter(emp => emp && emp.skillMatchCount > 0) // Only include those with at least one matching skill
-        .sort((a, b) => b.overallScore - a.overallScore) // Sort by score descending
-        .slice(0, 5); // Limit to top 5
+      // Filter out null values and sort by score
+      const validEmployees = employeesWithScores.filter(emp => emp !== null);
+      const sortedEmployees = validEmployees.sort((a, b) => b.overallScore - a.overallScore);
+
+      // Always return at least one employee (the best match)
+      const topEmployees = sortedEmployees.slice(0, Math.max(5, sortedEmployees.length > 0 ? 1 : 0));
 
       return {
         taskAnalysis: {
@@ -309,11 +324,13 @@ export const analyzeAndPlanTask = tool(
             description: getSkillDescription(skill)
           }))
         },
-        suggestedEmployees: scoredEmployees.map(emp => ({
+        suggestedEmployees: topEmployees.map(emp => ({
           ...emp,
-          recommendation: emp.overallScore >= 70 ? 'Excellent match' :
-                         emp.overallScore >= 50 ? 'Good match' :
-                         emp.overallScore >= 30 ? 'Fair match' : 'Partial match',
+          recommendation: emp.matchType === 'exact' && emp.skillMatchPercentage >= 80 ? 'Excellent match' :
+                         emp.matchType === 'exact' && emp.skillMatchPercentage >= 50 ? 'Good match' :
+                         emp.matchType === 'related' ? 'Related skills match' :
+                         emp.overallScore >= 60 ? 'Suitable candidate' :
+                         emp.overallScore >= 40 ? 'Potential candidate' : 'Available employee',
         })),
         searchCriteria: {
           skills: analysis.requiredSkills,

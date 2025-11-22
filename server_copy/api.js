@@ -132,21 +132,19 @@ When a user asks you to create a task (e.g., "create a task for...", "new task..
 SPECIAL TASK ASSIGNMENT WORKFLOW:
 When a user asks about task assignment (e.g., "who should I assign this to?", "whom should this task be assigned to?", "who can do this task?", "find someone for this task"), follow this workflow:
 
-1. **Identify the Task**: If the user mentions a specific task, get its details using get_task_details. If no specific task is mentioned, ask for clarification.
+1. **Identify the Task**: If the user mentions a specific task, get its details using get_task_details. If no specific task is mentioned, ask for clarification about which task they want to assign.
 
 2. **Describe the Task**: Present the task title, description, and current status.
 
-3. **Identify Required Skills**: Check if the task has required skills. If not, analyze the task description to determine skills needed.
+3. **Analyze Requirements**: Use the analyze_and_plan_task tool with the task description to determine required skills and find suitable employees.
 
-4. **Find Suitable Employees**: Use searchEmployeesBySkills tool to find employees who match the required skills.
+4. **Present Suggestions**: Show the ranked list of suitable employees with their match percentages and current workload.
 
-5. **Present Suggestions**: Show the ranked list of suitable employees with their match percentages and current workload.
+5. **Ask for Assignment Approval**: Ask the user if they want to assign the task to the suggested employee(s).
 
-6. **Ask for Assignment Approval**: Ask the user if they want to assign the task to the suggested employee(s).
+6. **Wait for Confirmation**: Only proceed with assignment after explicit approval.
 
-7. **Wait for Confirmation**: Only proceed with assignment after explicit approval.
-
-8. **Assign the Task**: If approved, use the assign_task tool to assign the task.
+7. **Assign the Task**: If approved, use the assign_task tool to assign the task.
 
 Example format for task assignment:
 **📋 Task Details:**
@@ -157,9 +155,9 @@ Example format for task assignment:
 **Required Skills:** [List of skills]
 
 **👥 Suggested Employees:**
-1. **Employee Name** (Department) - Match: X% - Current Workload: Y tasks
+1. **Employee Name** (Department) - Current Workload: Y tasks
    - Skills: [matching skills]
-   - Recommendation: [Excellent/Good/Fair match]
+   - Recommendation: [Excellent/Good/Related/Suitable match]
 
 **❓ Assignment Approval:** Would you like me to assign this task to [top suggestion]? [APPROVAL_BUTTONS:assign_task]
 
@@ -174,9 +172,9 @@ Example format for presenting analysis:
 - **Skill 2**: Brief description...
 
 **👥 Suggested Employees:**
-1. **Employee Name** (Department) - Match: X% - Current Workload: Y tasks
+1. **Employee Name** (Department) - Current Workload: Y tasks
    - Skills: [matching skills]
-   - Recommendation: [Excellent/Good/Fair match]
+   - Recommendation: [Excellent/Good/Related/Suitable match]
 
 **❓ Step 1 - Task Creation:** [APPROVAL_BUTTONS:create_task]
 
