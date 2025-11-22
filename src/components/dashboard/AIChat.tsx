@@ -17,6 +17,10 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  approvalButtons?: {
+    type: string;
+    messageId: string;
+  };
 }
 
 interface AIChatProps {
@@ -74,9 +78,74 @@ const AIChat = ({ userRole }: AIChatProps) => {
     }
   }, [messages, user?.id]);
 
+  const handleApprovalClick = async (messageId: string, approvalType: string, approved: boolean) => {
+    const response = approved ? "yes" : "no";
+
+    // Add user response message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: response,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // Get current session for authentication token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !user) throw new Error("User not authenticated");
+
+      // Prepare messages for server API
+      const messagesForApi: ApiChatMessage[] = [
+        ...messages.map(msg => ({ role: msg.role, content: msg.content })),
+        { role: 'user', content: response }
+      ];
+
+      // Add initial assistant message with empty content
+      const assistantId = (Date.now() + 1).toString();
+      const assistantMessage: ChatMessage = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      const result = await chatApiClient.sendMessage(messagesForApi, userRole, session.access_token);
+
+      if (result.success) {
+        // Update the assistant message with the complete response
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: result.response }
+            : msg
+        ));
+      } else {
+        throw new Error(result.error || 'Failed to get response from server');
+      }
+
+    } catch (error) {
+      console.error("🤖 AI Agent - Error:", error);
+      toast.error("Failed to process approval");
+
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 2).toString(),
+        role: "assistant",
+        content: "Sorry, I encountered an error. Please try again.",
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!input.trim() || isLoading) return;
 
     // Log user input
@@ -138,7 +207,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
             ? { ...msg, content: result.response }
             : msg
         ));
-        
+
         console.log('🤖 AI Agent - Server Response:', {
           contentLength: result.response.length,
           timestamp: new Date().toISOString()
@@ -150,7 +219,7 @@ const AIChat = ({ userRole }: AIChatProps) => {
     } catch (error) {
       console.error("🤖 AI Agent - Error:", error);
       toast.error("Failed to process message");
-      
+
       // Add error message
       const errorMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
@@ -227,7 +296,45 @@ const AIChat = ({ userRole }: AIChatProps) => {
                   >
                     {message.role === "assistant" ? (
                       <div className="text-sm prose">
-                        <ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children, ...props }) => {
+                              const content = String(children);
+                              const buttonMatch = content.match(/\[APPROVAL_BUTTONS:([^\]]+)\]/);
+
+                              if (buttonMatch) {
+                                const buttonType = buttonMatch[1];
+                                const textBefore = content.replace(/\[APPROVAL_BUTTONS:[^\]]+\]/, '').trim();
+
+                                return (
+                                  <div className="space-y-2">
+                                    {textBefore && <p {...props}>{textBefore}</p>}
+                                    <div className="flex gap-2 mt-2">
+                                      <Button
+                                        size="sm"
+                                        variant="default"
+                                        onClick={() => handleApprovalClick(message.id, buttonType, true)}
+                                        disabled={isLoading}
+                                      >
+                                        Yes
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => handleApprovalClick(message.id, buttonType, false)}
+                                        disabled={isLoading}
+                                      >
+                                        No
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return <p {...props}>{children}</p>;
+                            }
+                          }}
+                        >
                           {message.content}
                         </ReactMarkdown>
                       </div>

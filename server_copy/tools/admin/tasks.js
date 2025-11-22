@@ -203,6 +203,221 @@ export const listTasks = tool(
 );
 
 /**
+ * Tool: Analyze task requirements and suggest employees
+ */
+export const analyzeAndPlanTask = tool(
+  async ({ taskDescription }) => {
+    try {
+      if (!taskDescription || taskDescription.trim().length === 0) {
+        throw new Error("Task description is required for analysis.");
+      }
+
+      // Analyze the task and determine required skills
+      const analysis = analyzeTaskRequirements(taskDescription);
+
+      // Search for employees with the required skills
+      // Get all employee profiles
+      let query = supabase
+        .from('employee_profiles')
+        .select('*');
+
+      query = query.eq('availability', true); // Only available employees
+
+      const { data: empProfiles, error } = await query;
+
+      if (error) {
+        throw new Error(`Database error while searching employees: ${error.message}`);
+      }
+
+      if (!empProfiles || empProfiles.length === 0) {
+        throw new Error('No available employees found');
+      }
+
+      // Get profiles and skills for all employees
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .in('id', empProfiles.map(ep => ep.user_id));
+
+      if (!profiles) {
+        throw new Error('Failed to fetch employee profiles');
+      }
+
+      // Build employees with skills and calculate match scores
+      const employeesWithScores = await Promise.all(
+        empProfiles.map(async (emp) => {
+          const profile = profiles.find(p => p.id === emp.user_id);
+          if (!profile) return null;
+
+          const empSkills = await getEmployeeSkills(emp.id);
+
+          // Count matching skills (case-insensitive)
+          const matchingSkills = analysis.requiredSkills.filter(reqSkill =>
+            empSkills.some(empSkill =>
+              empSkill.toLowerCase().includes(reqSkill.toLowerCase()) ||
+              reqSkill.toLowerCase().includes(empSkill.toLowerCase())
+            )
+          );
+
+          const skillMatchCount = matchingSkills.length;
+          const skillMatchPercentage = analysis.requiredSkills.length > 0
+            ? (skillMatchCount / analysis.requiredSkills.length) * 100
+            : 0;
+
+          // Calculate overall score (skills * 50% + performance * 30% + workload * 20%)
+          const performanceScore = (emp.performance_score || 0) * 20; // Max 100
+          const workloadScore = Math.max(0, 100 - (emp.current_workload || 0) * 20); // Lower workload = higher score
+          const skillScore = skillMatchPercentage * 0.5;
+
+          const totalScore = (
+            skillScore +
+            performanceScore * 0.3 +
+            workloadScore * 0.2
+          );
+
+          return {
+            id: emp.user_id,
+            name: profile.full_name,
+            email: profile.email,
+            department: emp.department,
+            designation: emp.designation,
+            skills: empSkills,
+            availability: emp.availability,
+            currentWorkload: emp.current_workload || 0,
+            performanceScore: emp.performance_score || 0,
+            hourlyRate: emp.hourly_rate,
+            skillMatchCount,
+            skillMatchPercentage: Math.round(skillMatchPercentage),
+            overallScore: Math.round(totalScore),
+            matchingSkills
+          };
+        })
+      );
+
+      // Filter and sort
+      const scoredEmployees = employeesWithScores
+        .filter(emp => emp && emp.skillMatchCount > 0) // Only include those with at least one matching skill
+        .sort((a, b) => b.overallScore - a.overallScore) // Sort by score descending
+        .slice(0, 5); // Limit to top 5
+
+      return {
+        taskAnalysis: {
+          title: analysis.title,
+          description: analysis.description,
+          requiredSkills: analysis.requiredSkills.map(skill => ({
+            skill,
+            description: getSkillDescription(skill)
+          }))
+        },
+        suggestedEmployees: scoredEmployees.map(emp => ({
+          ...emp,
+          recommendation: emp.overallScore >= 70 ? 'Excellent match' :
+                         emp.overallScore >= 50 ? 'Good match' :
+                         emp.overallScore >= 30 ? 'Fair match' : 'Partial match',
+        })),
+        searchCriteria: {
+          skills: analysis.requiredSkills,
+          availability: true
+        }
+      };
+    } catch (error) {
+      throw new Error(
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred while analyzing task requirements"
+      );
+    }
+  },
+  {
+    name: "analyze_and_plan_task",
+    description:
+      "Analyze a task description to determine requirements, skills needed, and suggest suitable employees. Use this when planning new tasks.",
+    schema: z.object({
+      taskDescription: z.string().describe("Description of the task to be analyzed"),
+    }),
+  }
+);
+
+/**
+ * Helper function to analyze task requirements
+ */
+function analyzeTaskRequirements(description) {
+  const desc = description.toLowerCase();
+
+  // Simple rule-based analysis (could be enhanced with AI)
+  let title = "New Task";
+  let requiredSkills = [];
+  let detailedDescription = description;
+
+  // Extract potential title
+  const sentences = description.split(/[.!?]+/).filter(s => s.trim());
+  if (sentences.length > 0) {
+    title = sentences[0].trim();
+    if (title.length > 50) {
+      title = title.substring(0, 47) + "...";
+    }
+  }
+
+  // Determine skills based on keywords
+  if (desc.includes('web') || desc.includes('website') || desc.includes('frontend') || desc.includes('ui') || desc.includes('ux')) {
+    requiredSkills.push('Web Development', 'UI/UX Design');
+  }
+  if (desc.includes('backend') || desc.includes('server') || desc.includes('api') || desc.includes('database')) {
+    requiredSkills.push('Backend Development', 'Database Management');
+  }
+  if (desc.includes('design') || desc.includes('graphic') || desc.includes('logo') || desc.includes('branding')) {
+    requiredSkills.push('Graphic Design');
+  }
+  if (desc.includes('marketing') || desc.includes('social media') || desc.includes('campaign')) {
+    requiredSkills.push('Digital Marketing');
+  }
+  if (desc.includes('data') || desc.includes('analytics') || desc.includes('report')) {
+    requiredSkills.push('Data Analysis');
+  }
+  if (desc.includes('mobile') || desc.includes('app') || desc.includes('ios') || desc.includes('android')) {
+    requiredSkills.push('Mobile Development');
+  }
+  if (desc.includes('project management') || desc.includes('coordinate') || desc.includes('manage')) {
+    requiredSkills.push('Project Management');
+  }
+  if (desc.includes('writing') || desc.includes('content') || desc.includes('copy')) {
+    requiredSkills.push('Content Writing');
+  }
+
+  // Default skills if none detected
+  if (requiredSkills.length === 0) {
+    requiredSkills = ['General Skills'];
+  }
+
+  return {
+    title,
+    description: detailedDescription,
+    requiredSkills: [...new Set(requiredSkills)] // Remove duplicates
+  };
+}
+
+/**
+ * Helper function to get skill descriptions
+ */
+function getSkillDescription(skill) {
+  const descriptions = {
+    'Web Development': 'Building and maintaining websites using HTML, CSS, JavaScript, and web frameworks',
+    'Backend Development': 'Server-side programming, APIs, and database integration',
+    'UI/UX Design': 'Creating user interfaces and optimizing user experience',
+    'Graphic Design': 'Visual design, branding, and creative assets creation',
+    'Digital Marketing': 'Online marketing strategies, social media, and campaign management',
+    'Data Analysis': 'Analyzing data, creating reports, and deriving insights',
+    'Mobile Development': 'Developing mobile applications for iOS and Android',
+    'Project Management': 'Planning, coordinating, and overseeing project execution',
+    'Content Writing': 'Creating written content for websites, blogs, and marketing materials',
+    'Database Management': 'Designing and maintaining database systems',
+    'General Skills': 'Various skills applicable to general administrative and operational tasks'
+  };
+
+  return descriptions[skill] || 'Specialized skills for completing this type of task';
+}
+
+/**
  * Tool: Create a new task
  */
 export const createTask = tool(

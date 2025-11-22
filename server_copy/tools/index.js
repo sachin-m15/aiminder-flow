@@ -20,8 +20,9 @@ export function getToolsForRole(role) {
       updateEmployee: employeeTools.updateEmployee,
       getEmployeePerformance: employeeTools.getEmployeePerformance,
       searchEmployeesBySkills: employeeTools.searchEmployeesBySkills,
-      
+
       // Task Management Tools
+      analyzeAndPlanTask: adminTaskTools.analyzeAndPlanTask,
       createTask: adminTaskTools.createTask,
       assignTask: adminTaskTools.assignTask,
       updateTask: adminTaskTools.updateTask,
