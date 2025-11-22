@@ -608,27 +608,24 @@ export const searchEmployeesBySkills = tool(
         })
       );
 
-      // Filter and sort
-      const scoredEmployees = employeesWithScores
-        .filter(emp => emp && emp.skillMatchCount > 0) // Only include those with at least one matching skill
-        .sort((a, b) => b.overallScore - a.overallScore) // Sort by score descending
-        .slice(0, limit); // Limit results
+      // Filter out null values and sort by score
+      const validEmployees = employeesWithScores.filter(emp => emp !== null);
+      const sortedEmployees = validEmployees.sort((a, b) => b.overallScore - a.overallScore);
 
-      if (scoredEmployees.length === 0) {
-        throw new Error(
-          `No employees found with skills: ${requiredSkills.join(', ')}. Try searching for different or fewer skills`
-        );
-      }
+      // Always return at least one employee (the best match)
+      const topEmployees = sortedEmployees.slice(0, Math.max(limit, sortedEmployees.length > 0 ? 1 : 0));
 
       return {
         searchedSkills: requiredSkills,
-        matches: scoredEmployees.map(emp => ({
+        matches: topEmployees.map(emp => ({
           ...emp,
-          recommendation: emp.overallScore >= 70 ? 'Excellent match' :
-                        emp.overallScore >= 50 ? 'Good match' :
-                        emp.overallScore >= 30 ? 'Fair match' : 'Partial match',
+          recommendation: emp.skillMatchCount > 0 && emp.skillMatchPercentage >= 80 ? 'Excellent match' :
+                        emp.skillMatchCount > 0 && emp.skillMatchPercentage >= 50 ? 'Good match' :
+                        emp.skillMatchCount > 0 ? 'Related skills match' :
+                        emp.overallScore >= 60 ? 'Suitable candidate' :
+                        emp.overallScore >= 40 ? 'Potential candidate' : 'Available employee',
         })),
-        count: scoredEmployees.length,
+        count: topEmployees.length,
       };
     } catch (error) {
       throw new Error(
