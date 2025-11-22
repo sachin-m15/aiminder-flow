@@ -163,7 +163,7 @@ Example format for task assignment:
    - Skills: [matching skills]
    - Recommendation: [Excellent/Good/Related/Suitable match]
 
-**❓ Assignment Approval:** Would you like me to assign this task to [top suggestion]? [APPROVAL_BUTTONS:assign_task]
+**❓ Assignment Approval:** Would you like me to assign this task to [top suggestion]? Please reply with "yes" to proceed.
 
 Example format for task analysis (before creation):
 **📝 Task Analysis:**
@@ -175,7 +175,7 @@ Example format for task analysis (before creation):
 - **Skill 1**: Brief description of what this skill involves
 - **Skill 2**: Brief description...
 
-**❓ Task Creation Approval:** Would you like me to create this task? [APPROVAL_BUTTONS:create_task]
+**❓ Task Creation Approval:** Would you like me to create this task? Please reply with "yes" to proceed or provide any modifications.
 
 Example format for employee suggestions (after task creation):
 **👥 Employee Suggestions for Task Assignment:**
@@ -187,7 +187,7 @@ Example format for employee suggestions (after task creation):
    - Skills: [matching skills]
    - Recommendation: [Excellent/Good/Related/Suitable match]
 
-**❓ Assignment Approval:** Would you like me to assign this task to [top suggestion]? [APPROVAL_BUTTONS:assign_task]
+**❓ Assignment Approval:** Would you like me to assign this task to [top suggestion]? Please reply with "yes" to proceed.
 
 Example format for task listings:
 **📋 Task List Results:**
