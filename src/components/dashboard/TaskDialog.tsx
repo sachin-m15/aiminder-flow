@@ -20,7 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp, Edit2, X as XIcon, Save, Upload, File, Download } from "lucide-react";
+import { Send, Clock, User, Calendar, AlertCircle, CheckCircle, XCircle, TrendingUp, Edit2, X as XIcon, Save, Upload, File, Download, Copy } from "lucide-react";
 // import ChatInterface from "./ChatInterface"; // TODO: Component not yet implemented
 import { taskProgressSchema, type TaskProgressFormData } from "@/lib/validation";
 import {
@@ -493,6 +493,15 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
     }
   };
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Task ID copied to clipboard");
+    } catch (error) {
+      toast.error("Failed to copy task ID");
+    }
+  };
+
   return (
     <ErrorBoundary componentName="TaskDialog">
       <Dialog open={open} onOpenChange={onClose}>
@@ -508,7 +517,18 @@ const TaskDialog = ({ task, open, onClose, userId, isAdmin }: TaskDialogProps) =
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <DialogTitle className="text-2xl" id="task-dialog-title">{task.title}</DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1">Task ID: {task.id}</p>
+                <div className="flex items-center gap-1 mt-1">
+                  <p className="text-sm text-muted-foreground">Task ID: {task.id}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 hover:bg-muted"
+                    onClick={() => copyToClipboard(task.id)}
+                    title="Copy task ID"
+                  >
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
                 <div className="flex items-center gap-2 mt-2" aria-label={`Status: ${task.status}, Priority: ${task.priority}`}>
                   {getStatusBadge(task.status)}
                   {getPriorityBadge(task.priority)}

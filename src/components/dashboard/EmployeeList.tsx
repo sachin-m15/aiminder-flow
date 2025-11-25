@@ -3,8 +3,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Users, Search } from "lucide-react";
+import { Users, Search, Copy } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import EmployeeDetailDialog from "./EmployeeDetailDialog";
 import ErrorBoundary from "@/components/ui/error-boundary";
@@ -177,6 +178,15 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
     setEmployees(merged);
   };
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("ID copied to clipboard");
+    } catch (error) {
+      toast.error("Failed to copy ID");
+    }
+  };
+
   const combinedSearchQuery = searchQuery || localSearchQuery;
   const filteredEmployees = employees.filter((emp) =>
     emp.profiles.full_name.toLowerCase().includes(combinedSearchQuery.toLowerCase()) ||
@@ -257,7 +267,21 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
                       >
                         <div>
                           <p className="font-medium text-sm">{employee.profiles.full_name}</p>
-                          <p className="text-xs text-muted-foreground">ID: {employee.user_id}</p>
+                          <div className="flex items-center gap-1">
+                            <p className="text-xs text-muted-foreground">ID: {employee.user_id}</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 hover:bg-muted"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(employee.user_id);
+                              }}
+                              title="Copy employee ID"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
                           <p className="text-xs text-muted-foreground">{employee.profiles.email}</p>
                         </div>
                         <div>
