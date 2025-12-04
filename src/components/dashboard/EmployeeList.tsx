@@ -205,8 +205,7 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
 
   return (
     <ErrorBoundary componentName="EmployeeList">
-      <div className="space-y-4">
-        <Card>
+      <Card className="h-full flex flex-col">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -224,10 +223,10 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
+          <CardContent className="flex flex-col h-full">
+            <div className="flex flex-col flex-1 min-h-0">
               {/* Table Header */}
-              <div className="grid grid-cols-7 gap-4 px-4 py-2 border-b bg-muted/50 font-medium text-sm">
+              <div className="grid grid-cols-7 gap-4 px-4 py-2 border-b bg-muted/50 font-medium text-sm flex-shrink-0">
                 <div>Name</div>
                 <div>Department</div>
                 <div>Designation</div>
@@ -240,7 +239,7 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
               {/* Virtualized Table Body */}
               <div
                 ref={parentRef}
-                className="h-[400px] overflow-auto"
+                className="flex-1 min-h-[400px] overflow-auto"
                 aria-label="Employee list"
               >
                 <div
@@ -356,7 +355,6 @@ const EmployeeList = ({ searchQuery = "" }: EmployeeListProps) => {
             onClose={() => setSelectedEmployee(null)}
           />
         )}
-      </div>
     </ErrorBoundary>
   );
 };

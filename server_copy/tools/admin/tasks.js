@@ -182,7 +182,7 @@ export const listTasks = tool(
       assignedTo: z
         .string()
         .optional()
-        .describe("Filter by employee name or ID"),
+        .describe("Filter by employee name, email, or ID"),
       overdue: z
         .boolean()
         .optional()
@@ -854,12 +854,12 @@ export const assignTask = tool(
   },
   {
     name: "assign_task",
-    description: "Assign a task to a specific employee using their name or ID.",
+    description: "Assign a task to a specific employee using their name, email, or ID.",
     schema: z.object({
       taskId: z.string().uuid().describe("The unique ID of the task to assign"),
       employeeIdentifier: z
         .string()
-        .describe("The name or UUID of the employee to assign the task to"),
+        .describe("The name, email, or UUID of the employee to assign the task to"),
     }),
   }
 );

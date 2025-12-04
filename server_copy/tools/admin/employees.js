@@ -110,10 +110,26 @@ export const listEmployees = tool(
         return (b.performance_score || 0) - (a.performance_score || 0);
       });
 
-      return {
-        employees,
-        count: employees.length,
-      };
+      // Format output for human readability as a clean list
+      if (employees.length === 0) {
+        return "No employees found matching your criteria.";
+      }
+
+      const lines = employees.map((emp) => {
+        const availabilityText = emp.availability ? "Available" : "Unavailable";
+        const workloadText = emp.current_workload ? `${emp.current_workload} tasks` : "No active tasks";
+        const skillsText = emp.skills.length > 0 ? emp.skills.slice(0, 3).join(", ") + (emp.skills.length > 3 ? "..." : "") : "No skills listed";
+
+        return `• ${emp.full_name} (${emp.designation}) - ${emp.email}
+  - Department: ${emp.department || 'Not specified'}
+  - Availability: ${availabilityText}
+  - Current Workload: ${workloadText}
+  - Skills: ${skillsText}`;
+      });
+
+      const summary = `Found ${employees.length} employee(s) matching your criteria.`;
+
+      return `${lines.join("\n\n")}\n\n${summary}`;
     } catch (error) {
       throw new Error(
         error instanceof Error ? error.message : 'An unexpected error occurred while fetching employees'
@@ -133,6 +149,9 @@ export const listEmployees = tool(
       searchQuery: z.string().optional().describe('Search employees by name or email (case-insensitive partial match)'),
       skills: z.array(z.string()).optional().describe('Filter by required skills (employees must have ALL specified skills)'),
     }),
+    returnType: z
+      .string()
+      .describe("A formatted, human-readable list of employees"),
   }
 );
 

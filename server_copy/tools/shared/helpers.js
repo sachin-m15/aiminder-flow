@@ -67,7 +67,7 @@ export async function findEmployee(identifier) {
   try {
     // Check if it's a UUID (employee ID)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    
+
     if (uuidRegex.test(identifier)) {
       // Search by user ID
       const { data: profile, error: profileError } = await supabase
@@ -110,6 +110,85 @@ export async function findEmployee(identifier) {
           skills
         }
       };
+    } else if (identifier.includes('@')) {
+      // Search by email
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .eq('email', identifier)
+        .limit(5);
+
+      if (profileError || !profiles || profiles.length === 0) {
+        return { success: false, error: 'Employee not found by email' };
+      }
+
+      if (profiles.length > 1) {
+        // Get employee profiles for the matching users to include job roles
+        const { data: empProfiles, error: empError } = await supabase
+          .from('employee_profiles')
+          .select('user_id, designation, department')
+          .in('user_id', profiles.map(p => p.id));
+
+        const empProfileMap = {};
+        if (empProfiles) {
+          empProfiles.forEach(ep => {
+            empProfileMap[ep.user_id] = ep;
+          });
+        }
+
+        const detailedMatches = profiles.map(p => {
+          const empProfile = empProfileMap[p.id];
+          return {
+            id: p.id,
+            name: p.full_name,
+            email: p.email,
+            designation: empProfile?.designation || 'Unknown',
+            department: empProfile?.department || 'Unknown'
+          };
+        });
+
+        const matchList = detailedMatches.map(m =>
+          `• ${m.name} (${m.designation}) - ${m.email}`
+        ).join('\n');
+
+        return {
+          success: false,
+          error: `Multiple employees found with the same email:\n${matchList}\n\nPlease use employee ID to identify the correct employee.`,
+          matches: detailedMatches
+        };
+      }
+
+      const profile = profiles[0];
+      const { data: empProfile, error: empError } = await supabase
+        .from('employee_profiles')
+        .select('*')
+        .eq('user_id', profile.id)
+        .single();
+
+      if (empError || !empProfile) {
+        return { success: false, error: 'Employee profile not found' };
+      }
+
+      const skills = await getEmployeeSkills(empProfile.id);
+
+      return {
+        success: true,
+        data: {
+          user_id: profile.id,
+          full_name: profile.full_name,
+          email: profile.email,
+          department: empProfile.department,
+          designation: empProfile.designation,
+          availability: empProfile.availability,
+          current_workload: empProfile.current_workload,
+          performance_score: empProfile.performance_score,
+          hourly_rate: empProfile.hourly_rate,
+          on_time_rate: empProfile.on_time_rate,
+          quality_score: empProfile.quality_score,
+          tasks_completed: empProfile.tasks_completed,
+          skills
+        }
+      };
     } else {
       // Search by name
       const { data: profiles, error: profileError } = await supabase
@@ -123,10 +202,38 @@ export async function findEmployee(identifier) {
       }
 
       if (profiles.length > 1) {
+        // Get employee profiles for the matching users to include job roles
+        const { data: empProfiles, error: empError } = await supabase
+          .from('employee_profiles')
+          .select('user_id, designation, department')
+          .in('user_id', profiles.map(p => p.id));
+
+        const empProfileMap = {};
+        if (empProfiles) {
+          empProfiles.forEach(ep => {
+            empProfileMap[ep.user_id] = ep;
+          });
+        }
+
+        const detailedMatches = profiles.map(p => {
+          const empProfile = empProfileMap[p.id];
+          return {
+            id: p.id,
+            name: p.full_name,
+            email: p.email,
+            designation: empProfile?.designation || 'Unknown',
+            department: empProfile?.department || 'Unknown'
+          };
+        });
+
+        const matchList = detailedMatches.map(m =>
+          `• ${m.name} (${m.designation}) - ${m.email}`
+        ).join('\n');
+
         return {
           success: false,
-          error: 'Multiple employees found. Please be more specific or use employee ID.',
-          matches: profiles.map(p => ({ id: p.id, name: p.full_name, email: p.email }))
+          error: `Multiple employees found with that name:\n${matchList}\n\nPlease provide the email ID to identify the correct employee.`,
+          matches: detailedMatches
         };
       }
 

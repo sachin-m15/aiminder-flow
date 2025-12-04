@@ -232,7 +232,7 @@ const AdminDashboard = () => {
           </header>
         )}
 
-        <div className={`${activeView === "chat" ? "flex-1 p-4 md:p-6" : "p-4 md:p-6"} space-y-4 md:space-y-6 flex-1 overflow-y-auto`}>
+        <div className={`${activeView === "chat" ? "flex-1 p-4 md:p-6" : activeView === "employees" ? "flex-1" : "p-4 md:p-6"} ${activeView === "employees" ? "" : "space-y-4 md:space-y-6"} flex-1 overflow-y-auto`}>
           {activeView === "dashboard" && (
             <ErrorBoundary componentName="DashboardSummary">
               <DashboardSummary />
