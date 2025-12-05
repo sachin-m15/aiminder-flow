@@ -17,6 +17,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  isApprovalRequest?: boolean;
 }
 
 interface AIChatProps {
@@ -29,6 +30,87 @@ const AIChat = ({ userRole }: AIChatProps) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { user } = useAuthStore();
+
+  // Helper function to detect approval request messages
+  const isApprovalRequest = (content: string): boolean => {
+    const approvalPatterns = [
+      /would you like me to/i,
+      /please reply with "yes"/i,
+      /do you want me to/i,
+      /should i proceed/i,
+      /confirm.*assign/i,
+      /confirm.*create/i
+    ];
+    return approvalPatterns.some(pattern => pattern.test(content));
+  };
+
+  // Handle approval button clicks
+  const handleApprovalResponse = async (response: "yes" | "no") => {
+    if (isLoading) return;
+
+    // Add user response message
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      role: "user",
+      content: response,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+
+    try {
+      // Get current session for authentication token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session || !user) throw new Error("User not authenticated");
+
+      // Prepare messages for server API including the approval response
+      const messagesForApi: ApiChatMessage[] = [
+        ...messages.map(msg => ({ role: msg.role, content: msg.content })),
+        { role: 'user', content: response }
+      ];
+
+      // Add initial assistant message with empty content
+      const assistantId = (Date.now() + 1).toString();
+      const assistantMessage: ChatMessage = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Send request to server-side API
+      const result = await chatApiClient.sendMessage(messagesForApi, userRole, session.access_token);
+
+      if (result.success) {
+        // Update the assistant message with the complete response
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantId
+            ? { ...msg, content: result.response, isApprovalRequest: isApprovalRequest(result.response) }
+            : msg
+        ));
+      } else {
+        throw new Error(result.error || 'Failed to get response from server');
+      }
+
+    } catch (error) {
+      console.error("Error processing approval response:", error);
+      toast.error("Failed to process response");
+
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 2).toString(),
+        role: "assistant",
+        content: "Sorry, I encountered an error. Please try again.",
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Helper function to get user-specific localStorage key
   const getStorageKey = (userId: string) => `ai-chat-messages-${userId}`;
@@ -51,7 +133,8 @@ const AIChat = ({ userRole }: AIChatProps) => {
         const parsed = JSON.parse(saved);
         const messagesWithDates = parsed.map((msg: any) => ({
           ...msg,
-          timestamp: new Date(msg.timestamp)
+          timestamp: new Date(msg.timestamp),
+          isApprovalRequest: msg.isApprovalRequest || (msg.role === 'assistant' && isApprovalRequest(msg.content))
         }));
         setMessages(messagesWithDates);
       } else {
@@ -136,9 +219,15 @@ const AIChat = ({ userRole }: AIChatProps) => {
         // Update the assistant message with the complete response
         setMessages(prev => prev.map(msg =>
           msg.id === assistantId
-            ? { ...msg, content: result.response }
+            ? { ...msg, content: result.response, isApprovalRequest: isApprovalRequest(result.response) }
             : msg
         ));
+
+        console.log('🤖 AI Agent - Approval Response:', {
+          response,
+          newContentLength: result.response.length,
+          timestamp: new Date().toISOString()
+        });
 
         console.log('🤖 AI Agent - Server Response:', {
           contentLength: result.response.length,
@@ -227,11 +316,40 @@ const AIChat = ({ userRole }: AIChatProps) => {
                     )}
                   >
                     {message.role === "assistant" ? (
-                      <div className="text-sm prose">
-                        <ReactMarkdown>
-                          {message.content}
-                        </ReactMarkdown>
-                      </div>
+                      message.isApprovalRequest ? (
+                        <div className="space-y-3">
+                          <div className="text-sm prose">
+                            <ReactMarkdown>
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApprovalResponse("yes")}
+                              disabled={isLoading}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              Yes
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleApprovalResponse("no")}
+                              disabled={isLoading}
+                              className="border-red-300 text-red-600 hover:bg-red-50"
+                            >
+                              No
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-sm prose">
+                          <ReactMarkdown>
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      )
                     ) : (
                       <p className="text-sm">{message.content}</p>
                     )}

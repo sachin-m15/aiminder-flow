@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { CheckCircle, XCircle, Clock, Filter, ArrowUpDown, AlertCircle, Plus, Copy } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Filter, ArrowUpDown, AlertCircle, Plus } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -122,14 +122,6 @@ const TaskList = ({ isAdmin, searchQuery = "" }: TaskListProps) => {
     return { text: `${daysUntil} days left`, color: "text-muted-foreground" };
   };
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Task ID copied to clipboard");
-    } catch (error) {
-      toast.error("Failed to copy task ID");
-    }
-  };
 
   return (
     <ErrorBoundary componentName="TaskList">
@@ -225,21 +217,6 @@ const TaskList = ({ isAdmin, searchQuery = "" }: TaskListProps) => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <CardTitle className="text-base line-clamp-2">{task.title}</CardTitle>
-                        <div className="flex items-center gap-1 mt-1">
-                          <p className="text-xs text-muted-foreground">Task ID: {task.id}</p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-4 w-4 p-0 hover:bg-muted"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyToClipboard(task.id);
-                            }}
-                            title="Copy task ID"
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
                       </div>
                       {getStatusBadge(task.status)}
                     </div>
